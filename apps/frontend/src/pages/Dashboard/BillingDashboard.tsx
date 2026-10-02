@@ -363,6 +363,36 @@ type UnbilledResponse = {
   items: UnbilledItem[];
 };
 
+function previousBillingMonthKey(periodStart?: string | null) {
+  if (!periodStart) return "";
+
+  const current = new Date(periodStart);
+  if (Number.isNaN(current.getTime())) return "";
+
+  const previous = new Date(
+    Date.UTC(current.getUTCFullYear(), current.getUTCMonth() - 1, 1),
+  );
+
+  return `${previous.getUTCFullYear()}-${String(
+    previous.getUTCMonth() + 1,
+  ).padStart(2, "0")}`;
+}
+
+function billingMonthLabel(monthKey?: string | null) {
+  if (!monthKey) return "Previous month";
+
+  const [year, monthNumber] = monthKey.split("-").map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(monthNumber)) {
+    return monthKey;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, monthNumber - 1, 1)));
+}
+
 type GroupedUnbilledReport = {
   key: string;
   sourceType: string;
@@ -502,6 +532,19 @@ const FORM_OPTIONS = [
 const CUSTOM_TEST_VALUE = "__CUSTOM_TEST__";
 const CUSTOM_ITEM_VALUE = "__CUSTOM_ITEM__";
 const CUSTOM_CLIENT_VALUE = "__CUSTOM_CLIENT__";
+const PREVIOUS_MONTH_MANUAL_PREFIX = "Previous Month Pending: ";
+
+type ManualLastMonthChargeDraft = {
+  id: number;
+  name: string;
+  amount: string;
+};
+
+let manualLastMonthDraftSequence = 0;
+function createManualLastMonthChargeDraft(): ManualLastMonthChargeDraft {
+  manualLastMonthDraftSequence += 1;
+  return { id: manualLastMonthDraftSequence, name: "", amount: "" };
+}
 
 /*
  * Production Type-of-Test values collected from existing records.
@@ -1480,6 +1523,26 @@ export default function BillingDashboard() {
     null,
   );
   const [detailLoading, setDetailLoading] = useState(false);
+
+  const [lastMonthPending, setLastMonthPending] =
+    useState<UnbilledResponse | null>(null);
+  const [lastMonthPendingLoading, setLastMonthPendingLoading] = useState(false);
+  const [lastMonthPendingError, setLastMonthPendingError] = useState<
+    string | null
+  >(null);
+  const [selectedLastMonthSourceKeys, setSelectedLastMonthSourceKeys] =
+    useState<string[]>([]);
+  const [showLastMonthPicker, setShowLastMonthPicker] = useState(false);
+  const [showManualLastMonthCharge, setShowManualLastMonthCharge] =
+    useState(false);
+  const [manualLastMonthCharges, setManualLastMonthCharges] = useState<
+    ManualLastMonthChargeDraft[]
+  >(() => [createManualLastMonthChargeDraft()]);
+  const [editingManualLastMonthLineId, setEditingManualLastMonthLineId] =
+    useState<string | null>(null);
+  const [editManualLastMonthName, setEditManualLastMonthName] = useState("");
+  const [editManualLastMonthAmount, setEditManualLastMonthAmount] =
+    useState("");
 
   const [draftAdjustment, setDraftAdjustment] = useState("0.00");
   const [draftNotes, setDraftNotes] = useState("");
@@ -2566,6 +2629,73 @@ export default function BillingDashboard() {
     resultSentTo,
   ]);
 
+  useEffect(() => {
+    setSelectedLastMonthSourceKeys([]);
+    setShowLastMonthPicker(false);
+    setShowManualLastMonthCharge(false);
+    setManualLastMonthCharges([createManualLastMonthChargeDraft()]);
+    setEditingManualLastMonthLineId(null);
+    setEditManualLastMonthName("");
+    setEditManualLastMonthAmount("");
+  }, [selectedInvoiceId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLastMonthPending() {
+      if (!invoiceDetail || invoiceDetail.invoiceKind !== "REPORT") {
+        setLastMonthPending(null);
+        setLastMonthPendingError(null);
+        setLastMonthPendingLoading(false);
+        return;
+      }
+
+      const previousMonth = previousBillingMonthKey(invoiceDetail.periodStart);
+      if (!previousMonth) {
+        setLastMonthPending(null);
+        setLastMonthPendingError(null);
+        return;
+      }
+
+      setLastMonthPendingLoading(true);
+      setLastMonthPendingError(null);
+
+      try {
+        const params = new URLSearchParams();
+        params.set("month", previousMonth);
+        params.set("clientCode", invoiceDetail.clientCode);
+
+        const result = await api<UnbilledResponse>(
+          `/billing/unbilled?${params.toString()}`,
+        );
+
+        if (!cancelled) {
+          setLastMonthPending(result);
+        }
+      } catch (error: any) {
+        if (!cancelled) {
+          setLastMonthPending(null);
+          setLastMonthPendingError(extractMessage(error));
+        }
+      } finally {
+        if (!cancelled) {
+          setLastMonthPendingLoading(false);
+        }
+      }
+    }
+
+    loadLastMonthPending();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    invoiceDetail?.id,
+    invoiceDetail?.invoiceKind,
+    invoiceDetail?.periodStart,
+    invoiceDetail?.clientCode,
+  ]);
+
   async function openInvoice(id: string) {
     setSelectedInvoiceId(id);
     setDetailLoading(true);
@@ -3574,6 +3704,253 @@ export default function BillingDashboard() {
     }
   }
 
+  async function refreshLastMonthPendingForInvoice(
+    detail: InvoiceDetail | null = invoiceDetail,
+  ) {
+    if (!detail || detail.invoiceKind !== "REPORT") {
+      setLastMonthPending(null);
+      return;
+    }
+
+    const previousMonth = previousBillingMonthKey(detail.periodStart);
+    if (!previousMonth) {
+      setLastMonthPending(null);
+      return;
+    }
+
+    const params = new URLSearchParams();
+    params.set("month", previousMonth);
+    params.set("clientCode", detail.clientCode);
+
+    const result = await api<UnbilledResponse>(
+      `/billing/unbilled?${params.toString()}`,
+    );
+    setLastMonthPending(result);
+  }
+
+  async function addSelectedLastMonthPending() {
+    if (
+      !invoiceDetail ||
+      !isManager ||
+      invoiceDetail.invoiceKind !== "REPORT" ||
+      invoiceDetail.status !== "DRAFT"
+    ) {
+      return;
+    }
+
+    if (selectedLastMonthSourceKeys.length === 0) {
+      toast.error("Select at least one previous-month form");
+      return;
+    }
+
+    const notReady = selectedLastMonthGroups.filter(
+      (group) => group.missingAmount || group.pricingIssues.length > 0,
+    );
+
+    if (notReady.length > 0) {
+      toast.error(
+        "Resolve pricing for all selected previous-month forms before adding them",
+      );
+      return;
+    }
+
+    setWorking("ADD_PREVIOUS_MONTH_FORMS");
+
+    try {
+      const updated = await api<InvoiceDetail>(
+        `/billing/invoices/${invoiceDetail.id}/previous-month/forms`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            sourceKeys: selectedLastMonthSourceKeys,
+          }),
+        },
+      );
+
+      setInvoiceDetail(updated);
+      setDraftAdjustment(updated.adjustmentAmount ?? "0.00");
+      setDraftNotes(updated.notes ?? "");
+      setSelectedLastMonthSourceKeys([]);
+      setShowLastMonthPicker(false);
+      await refreshLastMonthPendingForInvoice(updated);
+      await refreshAll();
+      toast.success("Previous-month pending forms added to this invoice");
+    } catch (error: any) {
+      toast.error(extractMessage(error));
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  async function addManualLastMonthPending() {
+    if (
+      !invoiceDetail ||
+      !isManager ||
+      invoiceDetail.invoiceKind !== "REPORT" ||
+      invoiceDetail.status !== "DRAFT"
+    ) {
+      return;
+    }
+
+    const enteredRows = manualLastMonthCharges.filter(
+      (row) => row.name.trim() || row.amount.trim(),
+    );
+
+    if (enteredRows.length === 0) {
+      toast.error("Add at least one manual charge");
+      return;
+    }
+
+    const charges: Array<{ description: string; amount: string }> = [];
+
+    for (const row of enteredRows) {
+      const description = row.name.trim();
+      const amount = Number(row.amount);
+
+      if (description.length < 2) {
+        toast.error("Enter a charge name for every manual charge");
+        return;
+      }
+
+      if (!Number.isFinite(amount) || amount <= 0) {
+        toast.error(`Enter an amount greater than 0 for ${description}`);
+        return;
+      }
+
+      charges.push({
+        description,
+        amount: amount.toFixed(2),
+      });
+    }
+
+    setWorking("ADD_PREVIOUS_MONTH_MANUAL");
+
+    try {
+      const updated = await api<InvoiceDetail>(
+        `/billing/invoices/${invoiceDetail.id}/previous-month/manual-charge`,
+        {
+          method: "POST",
+          body: JSON.stringify({ charges }),
+        },
+      );
+
+      setInvoiceDetail(updated);
+      setDraftAdjustment(updated.adjustmentAmount ?? "0.00");
+      setDraftNotes(updated.notes ?? "");
+      setManualLastMonthCharges([createManualLastMonthChargeDraft()]);
+      setShowManualLastMonthCharge(false);
+      await refreshAll();
+      toast.success(
+        `${charges.length} manual previous-month charge${charges.length === 1 ? "" : "s"} added`,
+      );
+    } catch (error: any) {
+      toast.error(extractMessage(error));
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  function startEditManualLastMonthPending(line: BillingManualInvoiceLine) {
+    setEditingManualLastMonthLineId(line.id);
+    setEditManualLastMonthName(
+      String(line.description ?? "").replace(PREVIOUS_MONTH_MANUAL_PREFIX, ""),
+    );
+    setEditManualLastMonthAmount(String(line.amount ?? ""));
+  }
+
+  function cancelEditManualLastMonthPending() {
+    setEditingManualLastMonthLineId(null);
+    setEditManualLastMonthName("");
+    setEditManualLastMonthAmount("");
+  }
+
+  async function saveEditManualLastMonthPending(
+    line: BillingManualInvoiceLine,
+  ) {
+    if (
+      !invoiceDetail ||
+      !isManager ||
+      invoiceDetail.invoiceKind !== "REPORT" ||
+      invoiceDetail.status !== "DRAFT"
+    ) {
+      return;
+    }
+
+    const description = editManualLastMonthName.trim();
+    const amount = Number(editManualLastMonthAmount);
+
+    if (description.length < 2) {
+      toast.error("Enter a charge name");
+      return;
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Enter an amount greater than 0");
+      return;
+    }
+
+    setWorking(`EDIT_PREVIOUS_MONTH_MANUAL:${line.id}`);
+
+    try {
+      const updated = await api<InvoiceDetail>(
+        `/billing/invoices/${invoiceDetail.id}/manual-lines/${line.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            description,
+            quantity: 1,
+            unitPrice: amount.toFixed(2),
+          }),
+        },
+      );
+
+      setInvoiceDetail(updated);
+      setDraftAdjustment(updated.adjustmentAmount ?? "0.00");
+      setDraftNotes(updated.notes ?? "");
+      cancelEditManualLastMonthPending();
+      await refreshAll();
+      toast.success(`Updated ${description}`);
+    } catch (error: any) {
+      toast.error(extractMessage(error));
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  async function deleteManualLastMonthPending(line: BillingManualInvoiceLine) {
+    if (
+      !invoiceDetail ||
+      !isManager ||
+      invoiceDetail.invoiceKind !== "REPORT" ||
+      invoiceDetail.status !== "DRAFT"
+    ) {
+      return;
+    }
+
+    if (!window.confirm("Remove this manual previous-month charge?")) {
+      return;
+    }
+
+    setWorking(`DELETE_PREVIOUS_MONTH_MANUAL:${line.id}`);
+
+    try {
+      const updated = await api<InvoiceDetail>(
+        `/billing/invoices/${invoiceDetail.id}/manual-lines/${line.id}`,
+        { method: "DELETE" },
+      );
+
+      setInvoiceDetail(updated);
+      setDraftAdjustment(updated.adjustmentAmount ?? "0.00");
+      setDraftNotes(updated.notes ?? "");
+      await refreshAll();
+      toast.success("Manual previous-month charge removed");
+    } catch (error: any) {
+      toast.error(extractMessage(error));
+    } finally {
+      setWorking(null);
+    }
+  }
+
   function openAddExtraCharge(row: {
     sourceType: string;
     sourceId: string;
@@ -4536,6 +4913,93 @@ export default function BillingDashboard() {
         .map((line) => `${line.sourceType}:${line.sourceId}`),
     ).size;
   }, [invoiceDetail]);
+
+  const lastMonthPendingFormCount = useMemo(() => {
+    return new Set(
+      (lastMonthPending?.items ?? [])
+        .filter((item) => item.sourceId)
+        .map((item) => `${item.sourceType}:${item.sourceId}`),
+    ).size;
+  }, [lastMonthPending]);
+
+  const lastMonthPendingGroups = useMemo(
+    () => groupUnbilledByReport(lastMonthPending?.items ?? []),
+    [lastMonthPending],
+  );
+
+  const selectedLastMonthGroups = useMemo(
+    () =>
+      lastMonthPendingGroups.filter((group) =>
+        selectedLastMonthSourceKeys.includes(group.key),
+      ),
+    [lastMonthPendingGroups, selectedLastMonthSourceKeys],
+  );
+
+  const selectedLastMonthAmount = useMemo(
+    () =>
+      selectedLastMonthGroups.reduce(
+        (sum, group) =>
+          sum + (Number.isFinite(group.amount) ? group.amount : 0),
+        0,
+      ),
+    [selectedLastMonthGroups],
+  );
+
+  const previousMonthManualLines = useMemo(
+    () =>
+      (invoiceDetail?.manualLines ?? []).filter((line) =>
+        String(line.description ?? "").startsWith(PREVIOUS_MONTH_MANUAL_PREFIX),
+      ),
+    [invoiceDetail?.manualLines],
+  );
+
+  const previousMonthAddedSummary = useMemo(() => {
+    if (!invoiceDetail || invoiceDetail.invoiceKind !== "REPORT") {
+      return { formCount: 0, reportAmount: 0, manualAmount: 0, total: 0 };
+    }
+
+    const periodStart = new Date(invoiceDetail.periodStart).getTime();
+    const previousSourceKeys = new Set<string>();
+    let reportAmount = 0;
+
+    for (const line of invoiceDetail.lines ?? []) {
+      const resultSent = line.resultSentToClientAt
+        ? new Date(line.resultSentToClientAt).getTime()
+        : Number.NaN;
+
+      if (Number.isFinite(resultSent) && resultSent < periodStart) {
+        previousSourceKeys.add(`${line.sourceType}:${line.sourceId}`);
+        reportAmount += Number(line.amount ?? 0) || 0;
+      }
+    }
+
+    for (const charge of invoiceDetail.extraCharges ?? []) {
+      if (previousSourceKeys.has(`${charge.sourceType}:${charge.sourceId}`)) {
+        reportAmount += Number(charge.amount ?? 0) || 0;
+      }
+    }
+
+    const manualAmount = previousMonthManualLines.reduce(
+      (sum, line) => sum + (Number(line.amount ?? 0) || 0),
+      0,
+    );
+
+    return {
+      formCount: previousSourceKeys.size,
+      reportAmount,
+      manualAmount,
+      total: reportAmount + manualAmount,
+    };
+  }, [invoiceDetail, previousMonthManualLines]);
+
+  const lastMonthPendingLabel = useMemo(
+    () =>
+      billingMonthLabel(
+        lastMonthPending?.month ||
+          previousBillingMonthKey(invoiceDetail?.periodStart),
+      ),
+    [lastMonthPending?.month, invoiceDetail?.periodStart],
+  );
 
   const activeFilterChips = useMemo(() => {
     const defaults = defaultBillingFilters();
@@ -7504,6 +7968,11 @@ export default function BillingDashboard() {
                                   )
                                 : [];
 
+                              const isPreviousMonthImported =
+                                !!line.resultSentToClientAt &&
+                                new Date(line.resultSentToClientAt).getTime() <
+                                  new Date(invoiceDetail.periodStart).getTime();
+
                               return (
                                 <React.Fragment key={line.id}>
                                   <tr className="align-top">
@@ -7525,6 +7994,11 @@ export default function BillingDashboard() {
                                       )}
                                     <td className="px-4 py-3 font-medium">
                                       <div>{line.formNumber}</div>
+                                      {isPreviousMonthImported && (
+                                        <span className="mt-1 inline-flex rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                                          Previous month
+                                        </span>
+                                      )}
                                     </td>
 
                                     <td className="px-4 py-3">
@@ -7805,6 +8279,606 @@ export default function BillingDashboard() {
 
                   <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_360px]">
                     <div className="space-y-4">
+                      {invoiceDetail.invoiceKind === "REPORT" && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                                Last Month Pending Charges
+                              </div>
+                              <h3 className="mt-1 font-semibold text-amber-950">
+                                {lastMonthPendingLabel}
+                              </h3>
+                            </div>
+                            <AlertTriangle className="h-5 w-5 text-amber-600" />
+                          </div>
+
+                          {lastMonthPendingLoading ? (
+                            <div className="mt-4 flex items-center gap-2 text-sm text-amber-800">
+                              <Spinner dark />
+                              Checking previous month...
+                            </div>
+                          ) : lastMonthPendingError ? (
+                            <div className="mt-3 text-sm text-rose-700">
+                              {lastMonthPendingError}
+                            </div>
+                          ) : (
+                            <>
+                              <div className="mt-4 grid grid-cols-3 gap-2">
+                                <div className="rounded-lg border border-amber-200 bg-white px-3 py-2">
+                                  <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                                    Pending Forms
+                                  </div>
+                                  <div className="mt-1 text-lg font-bold text-slate-900">
+                                    {lastMonthPendingFormCount}
+                                  </div>
+                                </div>
+                                <div className="rounded-lg border border-amber-200 bg-white px-3 py-2">
+                                  <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                                    Pending Charges
+                                  </div>
+                                  <div className="mt-1 text-lg font-bold text-slate-900">
+                                    {lastMonthPending?.count ?? 0}
+                                  </div>
+                                </div>
+                                <div className="rounded-lg border border-amber-200 bg-white px-3 py-2">
+                                  <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                                    Est. Pending
+                                  </div>
+                                  <div className="mt-1 text-lg font-bold text-amber-900">
+                                    {money(
+                                      lastMonthPending?.estimatedSubtotal ??
+                                        "0.00",
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {(lastMonthPending?.exceptionCount ?? 0) > 0 && (
+                                <div className="mt-2 text-xs font-medium text-rose-700">
+                                  {lastMonthPending?.exceptionCount} pending
+                                  charge
+                                  {(lastMonthPending?.exceptionCount ?? 0) === 1
+                                    ? " has"
+                                    : "s have"}{" "}
+                                  unresolved pricing. Resolve pricing before
+                                  adding that form.
+                                </div>
+                              )}
+
+                              {invoiceDetail.status === "DRAFT" &&
+                                isManager && (
+                                  <div className="mt-4 flex flex-wrap gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setShowLastMonthPicker(
+                                          (value) => !value,
+                                        );
+                                        setShowManualLastMonthCharge(false);
+                                      }}
+                                      disabled={
+                                        (lastMonthPending?.count ?? 0) === 0 ||
+                                        !!working
+                                      }
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-950 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      <Plus className="h-3.5 w-3.5" />
+                                      Add from Last Month
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setShowManualLastMonthCharge(
+                                          (value) => !value,
+                                        );
+                                        setShowLastMonthPicker(false);
+                                      }}
+                                      disabled={!!working}
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                      Add Manually
+                                    </button>
+                                  </div>
+                                )}
+
+                              {showLastMonthPicker &&
+                                invoiceDetail.status === "DRAFT" &&
+                                isManager && (
+                                  <div className="mt-4 rounded-xl border border-amber-200 bg-white p-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-100 pb-3">
+                                      <div>
+                                        <div className="text-sm font-semibold text-slate-900">
+                                          Select previous-month forms
+                                        </div>
+                                        <div className="text-xs text-slate-500">
+                                          A form is added with all of its ready
+                                          billing charges.
+                                        </div>
+                                      </div>
+
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setSelectedLastMonthSourceKeys(() => {
+                                            const readyGroups =
+                                              lastMonthPendingGroups.filter(
+                                                (group) =>
+                                                  !group.missingAmount &&
+                                                  group.pricingIssues.length ===
+                                                    0,
+                                              );
+                                            const allReadySelected =
+                                              readyGroups.length > 0 &&
+                                              readyGroups.every((group) =>
+                                                selectedLastMonthSourceKeys.includes(
+                                                  group.key,
+                                                ),
+                                              );
+
+                                            return allReadySelected
+                                              ? []
+                                              : readyGroups.map(
+                                                  (group) => group.key,
+                                                );
+                                          })
+                                        }
+                                        className="text-xs font-semibold text-amber-800 hover:text-amber-950"
+                                      >
+                                        {lastMonthPendingGroups.filter(
+                                          (group) =>
+                                            !group.missingAmount &&
+                                            group.pricingIssues.length === 0,
+                                        ).length > 0 &&
+                                        lastMonthPendingGroups
+                                          .filter(
+                                            (group) =>
+                                              !group.missingAmount &&
+                                              group.pricingIssues.length === 0,
+                                          )
+                                          .every((group) =>
+                                            selectedLastMonthSourceKeys.includes(
+                                              group.key,
+                                            ),
+                                          )
+                                          ? "Clear All"
+                                          : "Select All"}
+                                      </button>
+                                    </div>
+
+                                    <div className="mt-2 max-h-64 space-y-2 overflow-auto pr-1">
+                                      {lastMonthPendingGroups.map((group) => {
+                                        const selected =
+                                          selectedLastMonthSourceKeys.includes(
+                                            group.key,
+                                          );
+                                        const ready =
+                                          !group.missingAmount &&
+                                          group.pricingIssues.length === 0;
+
+                                        return (
+                                          <label
+                                            key={`previous-month-${group.key}`}
+                                            className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition ${
+                                              selected
+                                                ? "border-amber-400 bg-amber-50"
+                                                : "border-slate-200 bg-white hover:bg-slate-50"
+                                            } ${!ready ? "opacity-70" : ""}`}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={selected}
+                                              disabled={!ready}
+                                              onChange={(e) =>
+                                                setSelectedLastMonthSourceKeys(
+                                                  (current) =>
+                                                    e.target.checked
+                                                      ? [...current, group.key]
+                                                      : current.filter(
+                                                          (key) =>
+                                                            key !== group.key,
+                                                        ),
+                                                )
+                                              }
+                                              className="mt-1 h-4 w-4 rounded border-slate-300"
+                                            />
+
+                                            <div className="min-w-0 flex-1">
+                                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <div className="font-semibold text-slate-900">
+                                                  {group.formNumber}
+                                                </div>
+                                                <div className="font-semibold text-slate-900">
+                                                  {group.missingAmount
+                                                    ? "Pricing required"
+                                                    : money(group.amount)}
+                                                </div>
+                                              </div>
+                                              <div className="mt-0.5 truncate text-xs text-slate-600">
+                                                {group.description ||
+                                                  group.testLabels.join(", ") ||
+                                                  nice(group.formType)}
+                                              </div>
+                                              <div className="mt-1 text-[11px] text-slate-500">
+                                                {group.items.length} charge
+                                                {group.items.length === 1
+                                                  ? ""
+                                                  : "s"}
+                                                {group.testLabels.length > 0
+                                                  ? ` · ${group.testLabels.join(", ")}`
+                                                  : ""}
+                                              </div>
+                                              {!ready && (
+                                                <div className="mt-1 text-[11px] font-medium text-rose-700">
+                                                  Resolve pricing before adding
+                                                  this form.
+                                                </div>
+                                              )}
+                                            </div>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+
+                                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-amber-100 pt-3">
+                                      <div className="text-xs text-slate-600">
+                                        Selected:{" "}
+                                        {selectedLastMonthGroups.length} form
+                                        {selectedLastMonthGroups.length === 1
+                                          ? ""
+                                          : "s"}{" "}
+                                        · {money(selectedLastMonthAmount)}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={addSelectedLastMonthPending}
+                                        disabled={
+                                          selectedLastMonthSourceKeys.length ===
+                                            0 ||
+                                          working === "ADD_PREVIOUS_MONTH_FORMS"
+                                        }
+                                        className="inline-flex items-center gap-1.5 rounded-lg bg-amber-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50"
+                                      >
+                                        {working ===
+                                        "ADD_PREVIOUS_MONTH_FORMS" ? (
+                                          <Spinner />
+                                        ) : (
+                                          <Plus className="h-3.5 w-3.5" />
+                                        )}
+                                        Add Selected to Invoice
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+
+                              {showManualLastMonthCharge &&
+                                invoiceDetail.status === "DRAFT" &&
+                                isManager && (
+                                  <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+                                    <div className="flex flex-wrap items-start justify-between gap-2">
+                                      <div>
+                                        <div className="text-sm font-semibold text-slate-900">
+                                          Manual previous-month charges
+                                        </div>
+                                        <p className="mt-1 text-xs text-slate-500">
+                                          Add one or more charges when there is
+                                          no report/form available to select
+                                          above. The charge name you enter is
+                                          shown exactly as the visible charge
+                                          name on the invoice and PDF.
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    <div className="mt-3 space-y-2">
+                                      {manualLastMonthCharges.map(
+                                        (row, index) => (
+                                          <div
+                                            key={row.id}
+                                            className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 sm:grid-cols-[36px_1fr_150px_36px] sm:items-end"
+                                          >
+                                            <div className="hidden h-10 items-center justify-center text-xs font-semibold text-slate-400 sm:flex">
+                                              {index + 1}
+                                            </div>
+                                            <label>
+                                              <span className="mb-1 block text-xs font-medium text-slate-600">
+                                                Charge Name
+                                              </span>
+                                              <input
+                                                value={row.name}
+                                                onChange={(e) =>
+                                                  setManualLastMonthCharges(
+                                                    (current) =>
+                                                      current.map((item) =>
+                                                        item.id === row.id
+                                                          ? {
+                                                              ...item,
+                                                              name: e.target
+                                                                .value,
+                                                            }
+                                                          : item,
+                                                      ),
+                                                  )
+                                                }
+                                                placeholder="e.g. Overtime"
+                                                className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"
+                                              />
+                                            </label>
+                                            <label>
+                                              <span className="mb-1 block text-xs font-medium text-slate-600">
+                                                Amount
+                                              </span>
+                                              <input
+                                                value={row.amount}
+                                                onChange={(e) =>
+                                                  setManualLastMonthCharges(
+                                                    (current) =>
+                                                      current.map((item) =>
+                                                        item.id === row.id
+                                                          ? {
+                                                              ...item,
+                                                              amount:
+                                                                e.target.value,
+                                                            }
+                                                          : item,
+                                                      ),
+                                                  )
+                                                }
+                                                inputMode="decimal"
+                                                placeholder="0.00"
+                                                className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"
+                                              />
+                                            </label>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                setManualLastMonthCharges(
+                                                  (current) => {
+                                                    if (current.length === 1) {
+                                                      return [
+                                                        createManualLastMonthChargeDraft(),
+                                                      ];
+                                                    }
+                                                    return current.filter(
+                                                      (item) =>
+                                                        item.id !== row.id,
+                                                    );
+                                                  },
+                                                )
+                                              }
+                                              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-500 hover:bg-rose-50"
+                                              title="Remove this entry"
+                                            >
+                                              <Trash2 className="h-4 w-4" />
+                                            </button>
+                                          </div>
+                                        ),
+                                      )}
+                                    </div>
+
+                                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setManualLastMonthCharges(
+                                            (current) => [
+                                              ...current,
+                                              createManualLastMonthChargeDraft(),
+                                            ],
+                                          )
+                                        }
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                                      >
+                                        <Plus className="h-3.5 w-3.5" />
+                                        Add Another Charge
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={addManualLastMonthPending}
+                                        disabled={
+                                          !manualLastMonthCharges.some(
+                                            (row) =>
+                                              row.name.trim() ||
+                                              row.amount.trim(),
+                                          ) ||
+                                          working ===
+                                            "ADD_PREVIOUS_MONTH_MANUAL"
+                                        }
+                                        className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                                      >
+                                        {working ===
+                                        "ADD_PREVIOUS_MONTH_MANUAL" ? (
+                                          <Spinner />
+                                        ) : (
+                                          <Plus className="h-3.5 w-3.5" />
+                                        )}
+                                        Add All Charges
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+
+                              {previousMonthManualLines.length > 0 && (
+                                <div className="mt-4 rounded-xl border border-amber-200 bg-white p-3">
+                                  <div className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+                                    Manual Previous-Month Charges Added
+                                  </div>
+                                  <div className="mt-2 space-y-2">
+                                    {previousMonthManualLines.map((line) => {
+                                      const visibleChargeName = String(
+                                        line.description ?? "",
+                                      )
+                                        .replace(
+                                          PREVIOUS_MONTH_MANUAL_PREFIX,
+                                          "",
+                                        )
+                                        .trim();
+                                      const isEditing =
+                                        editingManualLastMonthLineId ===
+                                        line.id;
+
+                                      return (
+                                        <div
+                                          key={`previous-manual-${line.id}`}
+                                          className="rounded-lg bg-amber-50 px-3 py-2"
+                                        >
+                                          {isEditing ? (
+                                            <div className="grid gap-2 sm:grid-cols-[1fr_150px_auto] sm:items-end">
+                                              <label>
+                                                <span className="mb-1 block text-[11px] font-medium text-amber-900">
+                                                  Charge Name
+                                                </span>
+                                                <input
+                                                  value={
+                                                    editManualLastMonthName
+                                                  }
+                                                  onChange={(e) =>
+                                                    setEditManualLastMonthName(
+                                                      e.target.value,
+                                                    )
+                                                  }
+                                                  className="h-9 w-full rounded-md border border-amber-300 bg-white px-2.5 text-sm"
+                                                />
+                                              </label>
+                                              <label>
+                                                <span className="mb-1 block text-[11px] font-medium text-amber-900">
+                                                  Amount
+                                                </span>
+                                                <input
+                                                  value={
+                                                    editManualLastMonthAmount
+                                                  }
+                                                  onChange={(e) =>
+                                                    setEditManualLastMonthAmount(
+                                                      e.target.value,
+                                                    )
+                                                  }
+                                                  inputMode="decimal"
+                                                  className="h-9 w-full rounded-md border border-amber-300 bg-white px-2.5 text-sm"
+                                                />
+                                              </label>
+                                              <div className="flex items-center gap-1.5">
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    saveEditManualLastMonthPending(
+                                                      line,
+                                                    )
+                                                  }
+                                                  disabled={
+                                                    working ===
+                                                    `EDIT_PREVIOUS_MONTH_MANUAL:${line.id}`
+                                                  }
+                                                  className="rounded-md bg-amber-800 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-900 disabled:opacity-50"
+                                                >
+                                                  {working ===
+                                                  `EDIT_PREVIOUS_MONTH_MANUAL:${line.id}` ? (
+                                                    <Spinner />
+                                                  ) : (
+                                                    "Save"
+                                                  )}
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={
+                                                    cancelEditManualLastMonthPending
+                                                  }
+                                                  className="rounded-md border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                                                >
+                                                  Cancel
+                                                </button>
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            <div className="flex items-center justify-between gap-3">
+                                              <div className="min-w-0">
+                                                <div className="truncate text-sm font-semibold text-slate-900">
+                                                  {visibleChargeName ||
+                                                    "Previous-month pending charge"}
+                                                </div>
+                                                <div className="text-[11px] text-amber-800">
+                                                  Manual previous-month charge
+                                                </div>
+                                              </div>
+                                              <div className="flex items-center gap-2">
+                                                <span className="font-semibold text-slate-900">
+                                                  {money(line.amount)}
+                                                </span>
+                                                {invoiceDetail.status ===
+                                                  "DRAFT" &&
+                                                  isManager && (
+                                                    <>
+                                                      <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                          startEditManualLastMonthPending(
+                                                            line,
+                                                          )
+                                                        }
+                                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-amber-300 bg-white text-amber-800 hover:bg-amber-100"
+                                                        title={`Edit ${visibleChargeName || "manual charge"}`}
+                                                      >
+                                                        <Pencil className="h-3.5 w-3.5" />
+                                                      </button>
+                                                      <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                          deleteManualLastMonthPending(
+                                                            line,
+                                                          )
+                                                        }
+                                                        disabled={
+                                                          working ===
+                                                          `DELETE_PREVIOUS_MONTH_MANUAL:${line.id}`
+                                                        }
+                                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-rose-200 bg-white text-rose-500 hover:bg-rose-50 disabled:opacity-50"
+                                                        title={`Remove ${visibleChargeName || "manual charge"}`}
+                                                      >
+                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                      </button>
+                                                    </>
+                                                  )}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-xs text-amber-800">
+                                  Charges are included in the invoice total only
+                                  after you add them to this invoice.
+                                </p>
+
+                                {(lastMonthPending?.count ?? 0) > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (!lastMonthPending?.month) return;
+                                      setMonth(lastMonthPending.month);
+                                      setClientCode(invoiceDetail.clientCode);
+                                      setTab("UNBILLED");
+                                      setSelectedInvoiceId(null);
+                                      setInvoiceDetail(null);
+                                    }}
+                                    className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100"
+                                  >
+                                    Open Full Unbilled List
+                                  </button>
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+
                       {invoiceDetail.status === "DRAFT" && isManager ? (
                         <div className="rounded-xl border border-slate-200 p-4">
                           <h3 className="font-semibold text-slate-900">
@@ -7823,18 +8897,6 @@ export default function BillingDashboard() {
                                 }
                                 inputMode="decimal"
                                 className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"
-                              />
-                            </label>
-
-                            <label className="sm:col-span-2">
-                              <span className="mb-1 block text-xs font-medium text-slate-600">
-                                Notes
-                              </span>
-                              <textarea
-                                value={draftNotes}
-                                onChange={(e) => setDraftNotes(e.target.value)}
-                                rows={3}
-                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                               />
                             </label>
                           </div>
@@ -7885,16 +8947,7 @@ export default function BillingDashboard() {
                             </Button>
                           </div>
                         </div>
-                      ) : (
-                        <div className="rounded-xl border border-slate-200 p-4">
-                          <h3 className="font-semibold text-slate-900">
-                            Notes
-                          </h3>
-                          <p className="mt-2 whitespace-pre-line text-sm text-slate-600">
-                            {invoiceDetail.notes || "No invoice notes."}
-                          </p>
-                        </div>
-                      )}
+                      ) : null}
 
                       {(invoiceDetail.revisionNumber ?? 0) > 0 && (
                         <div className="rounded-xl border border-violet-200 bg-violet-50 p-4">
@@ -8214,6 +9267,29 @@ export default function BillingDashboard() {
                             </div>
                           )}
 
+                          {invoiceDetail.invoiceKind === "REPORT" &&
+                            previousMonthAddedSummary.total > 0 && (
+                              <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+                                <div>
+                                  <div className="font-medium text-amber-900">
+                                    Last Month Added
+                                  </div>
+                                  <div className="text-[11px] text-amber-700">
+                                    {previousMonthAddedSummary.formCount} form
+                                    {previousMonthAddedSummary.formCount === 1
+                                      ? ""
+                                      : "s"}
+                                    {previousMonthManualLines.length > 0
+                                      ? ` · ${previousMonthManualLines.length} manual`
+                                      : ""}
+                                  </div>
+                                </div>
+                                <span className="font-bold text-amber-950">
+                                  {money(previousMonthAddedSummary.total)}
+                                </span>
+                              </div>
+                            )}
+
                           <div className="flex justify-between">
                             <span className="text-slate-500">Subtotal</span>
                             <span className="font-medium">
@@ -8254,6 +9330,50 @@ export default function BillingDashboard() {
                         )}
                       </div>
                     </div>
+                  </div>
+
+                  <div className="mt-5 rounded-xl border-2 border-red-300 bg-red-50 p-4 shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-bold uppercase tracking-wide text-red-700">
+                          Invoice Notes
+                        </div>
+                        <p className="mt-1 text-xs text-red-600">
+                          Important invoice note — highlighted in red for
+                          visibility.
+                        </p>
+                      </div>
+                      <AlertTriangle className="h-5 w-5 text-red-600" />
+                    </div>
+
+                    {invoiceDetail.status === "DRAFT" && isManager ? (
+                      <>
+                        <textarea
+                          value={draftNotes}
+                          onChange={(e) => setDraftNotes(e.target.value)}
+                          rows={4}
+                          placeholder="Enter an important invoice note..."
+                          className="mt-3 w-full rounded-lg border-2 border-red-300 bg-white px-3 py-2 text-sm font-medium text-red-800 outline-none placeholder:text-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-100"
+                        />
+                        <div className="mt-3 flex items-center justify-between gap-3">
+                          <span className="text-xs text-red-600">
+                            The note is stored with the invoice.
+                          </span>
+                          <Button
+                            variant="secondary"
+                            onClick={saveDraft}
+                            disabled={working === "SAVE_DRAFT"}
+                          >
+                            {working === "SAVE_DRAFT" ? <Spinner dark /> : null}
+                            Save Notes
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="mt-3 whitespace-pre-line rounded-lg border border-red-200 bg-white px-3 py-3 text-sm font-semibold text-red-700">
+                        {invoiceDetail.notes || "No invoice notes."}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
