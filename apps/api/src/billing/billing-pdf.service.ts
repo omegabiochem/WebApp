@@ -1080,7 +1080,7 @@ export class BillingPdfService {
     });
 
     page.drawText('Sample Type', {
-      x: 336,
+      x: 340,
 
       y: y - 10,
 
@@ -1090,7 +1090,7 @@ export class BillingPdfService {
     });
 
     page.drawText('Lot No.', {
-      x: 382,
+      x: 390,
 
       y: y - 10,
 
@@ -1103,7 +1103,7 @@ export class BillingPdfService {
       'Pathogens / Actives / COA',
 
       {
-        x: 414,
+        x: 422,
 
         y: y - 10,
 
@@ -1118,7 +1118,7 @@ export class BillingPdfService {
 
       'Amount',
 
-      PAGE_WIDTH - RIGHT - 4,
+      PAGE_WIDTH - RIGHT - 12,
 
       y - 10,
 
@@ -1812,7 +1812,7 @@ export class BillingPdfService {
           const lotNoLines = this.wrapText(
             row.lotNo || '-',
 
-            6,
+            5,
           );
 
           const sampleTypeLines =
@@ -1821,7 +1821,7 @@ export class BillingPdfService {
                   this.wrapText(
                     label,
 
-                    8,
+                    7,
                   ),
                 )
               : ['-'];
@@ -1838,7 +1838,7 @@ export class BillingPdfService {
                   this.wrapText(
                     label,
 
-                    9,
+                    8,
                   ),
                 )
               : ['-'];
@@ -1849,7 +1849,7 @@ export class BillingPdfService {
                   this.wrapText(
                     label,
 
-                    11,
+                    10,
                   ),
                 )
               : ['Type of Test only'];
@@ -1992,7 +1992,7 @@ export class BillingPdfService {
 
           sampleTypeLines.forEach((line, index) => {
             page.drawText(line, {
-              x: 336,
+              x: 340,
 
               y: textTop - index * 9,
 
@@ -2004,7 +2004,7 @@ export class BillingPdfService {
 
           lotNoLines.forEach((line, index) => {
             page.drawText(line, {
-              x: 382,
+              x: 390,
 
               y: textTop - index * 9,
 
@@ -2019,7 +2019,7 @@ export class BillingPdfService {
               `- ${line}`,
 
               {
-                x: 414,
+                x: 422,
 
                 y: textTop - index * 9,
 
@@ -2035,7 +2035,7 @@ export class BillingPdfService {
 
             this.money(row.baseAmount),
 
-            PAGE_WIDTH - RIGHT - 4,
+            PAGE_WIDTH - RIGHT - 12,
 
             textTop,
 
@@ -2148,7 +2148,7 @@ export class BillingPdfService {
             this.drawRight(
               page,
               `+${this.money(Number(extraCharge.amount ?? 0))}`,
-              PAGE_WIDTH - RIGHT - 4,
+              PAGE_WIDTH - RIGHT - 12,
               chargeTop,
               6.9,
               bold,
