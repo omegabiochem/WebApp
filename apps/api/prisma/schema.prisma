@@ -713,6 +713,12 @@ enum FormType {
   COA
 }
 
+
+enum ApeReportResult {
+  PASS
+  FAIL
+}
+
 enum ReportStatus {
   DRAFT
   UNDER_DRAFT_REVIEW
@@ -1289,6 +1295,7 @@ model ApeReportDetails {
 
   footerRevNo         String?
   footerDateEffective DateTime?
+  result ApeReportResult @default(PASS)
 
   report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
 }
