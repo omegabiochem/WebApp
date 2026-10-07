@@ -861,6 +861,10 @@ export default function ApeReport({
   const [testReference, setTestReference] = useState(
     detail?.testReference || "USP <51> CURRENT",
   );
+
+  const [result, setResult] = useState<"PASS" | "FAIL">(
+    detail?.result === "FAIL" ? "FAIL" : "PASS",
+  );
   const [dateTested, setDateTested] = useState(
     formatDateForInput(detail?.dateTested),
   );
@@ -938,6 +942,7 @@ export default function ApeReport({
       },
       { key: "testSopNo", label: "Test SOP #", value: testSopNo },
       { key: "testReference", label: "Test Reference", value: testReference },
+      { key: "result", label: "Result", value: result },
       {
         key: "dateTested",
         label: "Date Tested",
@@ -1321,6 +1326,7 @@ export default function ApeReport({
 
     setTestSopNo(nextDetail?.testSopNo || "");
     setTestReference(nextDetail?.testReference || "USP <51> CURRENT");
+    setResult(nextDetail?.result === "FAIL" ? "FAIL" : "PASS");
     setDateTested(formatDateForInput(nextDetail?.dateTested));
     setDateCompleted(formatDateForInput(nextDetail?.dateCompleted));
 
@@ -1508,6 +1514,8 @@ export default function ApeReport({
       dateTested,
       dateCompleted,
       apeReportSections: calculatedApeReportSections,
+      result,
+
       testedBy,
       testedDate,
       reviewedBy,
@@ -2361,11 +2369,33 @@ export default function ApeReport({
         </div>
 
         {/* Denotes */}
-        <div className="mt-2 text-[11px] leading-snug">
-          <span className="font-bold">DENOTES:</span>{" "}
-          <span className="font-bold">APE:</span> Anti Microbial Preservative
-          Effectiveness <span className="font-bold">RESULT:</span> PASS (as per
-          USP criteria for category 2 products)
+        <div className="mt-2 flex items-center gap-1 text-[11px] leading-snug">
+          <span className="font-bold">DENOTES:</span>
+
+          <span>
+            <span className="font-bold">APE:</span> Anti Microbial Preservative
+            Effectiveness
+          </span>
+
+          <span className="ml-2 font-bold">RESULT:</span>
+
+          <select
+            className="border border-black bg-white px-1 py-[1px] text-[11px] font-bold
+               disabled:cursor-not-allowed disabled:bg-transparent
+               disabled:text-black disabled:opacity-100"
+            value={result}
+            onChange={(e) => {
+              setResult(e.target.value as "PASS" | "FAIL");
+              clearFieldError("result");
+              markDirty();
+            }}
+            disabled={lock("result")}
+          >
+            <option value="PASS">PASS</option>
+            <option value="FAIL">FAIL</option>
+          </select>
+
+          <span>(as per USP criteria for category 2 products)</span>
         </div>
 
         {/* Signatures */}

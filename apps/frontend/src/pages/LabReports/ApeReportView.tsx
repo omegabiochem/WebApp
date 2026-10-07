@@ -525,6 +525,7 @@ export default function ApeReportView(props: ApeReportViewProps) {
     testReference: detail?.testReference || "USP <51> CURRENT",
     dateTested: formatDateForInput(detail?.dateTested),
     dateCompleted: formatDateForInput(detail?.dateCompleted),
+    result: detail?.result === "FAIL" ? "FAIL" : "PASS",
     testedBy: detail?.testedBy || "",
     testedDate: formatDateForInput(detail?.testedDate),
     reviewedBy: detail?.reviewedBy || "",
@@ -941,7 +942,7 @@ export default function ApeReportView(props: ApeReportViewProps) {
           ))}
         </div>
 
-        <div className="mt-0 text-[10px] leading-snug whitespace-nowrap">
+        {/* <div className="mt-0 text-[10px] leading-snug whitespace-nowrap">
           <span className="font-bold">DENOTES:</span>
 
           <span className="font-semibold mx-2">
@@ -949,7 +950,29 @@ export default function ApeReportView(props: ApeReportViewProps) {
           </span>
 
           <span className="font-semibold mx-2">
-            RESULT - PASS (as per USP criteria for category 2 products)
+            RESULT - {fieldValue.result} (as per USP criteria for category 2
+            products)
+          </span>
+        </div> */}
+
+        <div className="result-row mt-1 flex items-center gap-2 text-[10px] leading-none">
+          <span className="font-bold">DENOTES:</span>
+
+          <span className="font-semibold">
+            APE - Anti Microbial Preservative Effectiveness
+          </span>
+
+          <span className="ml-1 font-bold">RESULT:</span>
+
+          <span
+            className="result-badge inline-flex min-w-[48px] items-center justify-center
+               border-2 border-black px-2 py-[2px] text-[10px] font-extrabold"
+          >
+            {fieldValue.result}
+          </span>
+
+          <span className="font-semibold">
+            (as per USP criteria for category 2 products)
           </span>
         </div>
 
