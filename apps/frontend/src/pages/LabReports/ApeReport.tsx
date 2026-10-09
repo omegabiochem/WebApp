@@ -510,24 +510,32 @@ function getLogReductionFromDecrease(
   return "0 Log Reduction";
 }
 
-function getInoculumResultFromDecrease(
-  organism: string,
-  percentDecrease: number | null,
+function getInoculumResultFromControlGrowth(
+  controlGrowthRaw: unknown,
   settings: ApeCalculationSettings,
 ) {
-  if (percentDecrease === null || !Number.isFinite(percentDecrease)) return "";
+  const actualControlGrowth = calculateActualGrowth(
+    controlGrowthRaw,
+    settings.controlGrowthMultiplier,
+  );
 
-  const isNiger = organism.trim().toLowerCase().includes("niger");
-  const minimum = isNiger
-    ? settings.nigerInoculumMin
-    : settings.standardInoculumMin;
-  const maximum = isNiger
-    ? settings.nigerInoculumMax
-    : settings.standardInoculumMax;
+  if (
+    actualControlGrowth === null ||
+    !Number.isFinite(actualControlGrowth) ||
+    actualControlGrowth <= 0
+  ) {
+    return "";
+  }
 
-  return percentDecrease >= minimum && percentDecrease <= maximum
-    ? "OK"
-    : "NOT OK";
+  // Count total digits in the actual Control Growth value.
+  // Examples:
+  // 1 × 10⁴   = 10,000    = 5 digits  → NOT OK
+  // 10 × 10⁴  = 100,000   = 6 digits  → OK
+  // 174 × 10⁴ = 1,740,000 = 7 digits  → OK
+
+  const totalDigits = Math.floor(Math.log10(Math.abs(actualControlGrowth))) + 1;
+
+  return totalDigits >= 6 && totalDigits <= 9 ? "OK" : "NOT OK";
 }
 
 function formatGrowthNotation(rawValue: unknown, multiplier: number) {
@@ -588,11 +596,7 @@ function recalculateApeReportSections(
         ),
         innoculumLevel:
           section.key === "DAY_0"
-            ? getInoculumResultFromDecrease(
-                row.organism,
-                percentDecrease,
-                settings,
-              )
+            ? getInoculumResultFromControlGrowth(controlGrowth, settings)
             : getLogReductionFromDecrease(percentDecrease, settings),
       };
     }),
