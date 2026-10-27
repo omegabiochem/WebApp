@@ -56,6 +56,8 @@ type Props = {
   mode: WorkspaceMode;
   layout: WorkspaceLayout;
   activeId?: string | null;
+  initialApeTab?: ApeWorkspaceReportTab;
+  initialPane?: ViewPane;
   correctionKinds?: CorrectionLaunchKind[]; // ✅ add this
   onClose: () => void;
   onLayoutChange: (layout: WorkspaceLayout) => void;
@@ -77,6 +79,8 @@ export default function ReportWorkspaceModal({
   mode,
   layout,
   activeId,
+  initialApeTab,
+  initialPane,
   correctionKinds = [],
   onClose,
   onLayoutChange,
@@ -210,6 +214,24 @@ export default function ReportWorkspaceModal({
   const [apeReportTabs, setApeReportTabs] = React.useState<
     Record<string, ApeWorkspaceReportTab>
   >({});
+
+  React.useEffect(() => {
+    if (!open || !initialApeTab) return;
+
+    const apeParents = reports.filter((r) => r.formType === "APE");
+
+    if (!apeParents.length) return;
+
+    setApeReportTabs((prev) => {
+      const next = { ...prev };
+
+      for (const parent of apeParents) {
+        next[parent.id] = initialApeTab;
+      }
+
+      return next;
+    });
+  }, [open, reports, initialApeTab]);
 
   const [apeChildReports, setApeChildReports] = React.useState<
     Record<string, any>
@@ -548,15 +570,25 @@ export default function ReportWorkspaceModal({
   }
 
   function getPane(r: ReportItem): ViewPane {
+    const selectedPane = paneByReportId[r.id];
+
+    if (selectedPane) {
+      return selectedPane;
+    }
+
+    if (initialPane) {
+      return initialPane;
+    }
+
     if (
       r.formType === "APE" &&
       mode === "UPDATE" &&
       String(user?.role || "") !== "CLIENT"
     ) {
-      return paneByReportId[r.id] ?? "REPORT";
+      return "REPORT";
     }
 
-    return paneByReportId[r.id] ?? paneFor(String(r.status));
+    return paneFor(String(r.status));
   }
 
   function setPane(r: ReportItem, pane: ViewPane) {

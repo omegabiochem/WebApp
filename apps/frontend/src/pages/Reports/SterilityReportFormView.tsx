@@ -7,6 +7,7 @@ import {
   getCorrections,
   type CorrectionItem,
 } from "../../utils/sterilityReportValidation";
+import { getReportQrUrl } from "../../utils/reportQrUrl";
 
 type Pane = "FORM" | "REPORT" | "ATTACHMENTS";
 
@@ -449,9 +450,11 @@ export default function SterilityReportFormView(
 
   const isBulk = isBulkPrint === true;
 
-  const qrValue = report?.id
-    ? JSON.stringify({ t: "report", id: report.id })
-    : "";
+  // const qrValue = report?.id
+  //   ? JSON.stringify({ t: "report", id: report.id })
+  //   : "";
+
+const qrValue = getReportQrUrl("STERILITY", report?.id);
 
   const [qrSvg, setQrSvg] = useState<string>("");
 
@@ -560,7 +563,7 @@ export default function SterilityReportFormView(
     return value ?? "";
   };
   const isReportPane = isBulk || activePane === "REPORT";
-const isFormPane = activePane === "FORM";
+  const isFormPane = activePane === "FORM";
 
   const createdByName = useCreatedByName(
     report,

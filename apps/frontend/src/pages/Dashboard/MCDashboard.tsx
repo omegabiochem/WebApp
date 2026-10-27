@@ -1229,6 +1229,17 @@ export default function MCDashboard() {
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
 
+  const CORRECTION_DISCARD_STORAGE_KEY = userKey
+    ? `mcDashboardCorrectionDiscarded:user:${userKey}`
+    : null;
+
+  const [discardedCorrectionIds, setDiscardedCorrectionIds] = useState<
+    string[]
+  >([]);
+
+  const [correctionDiscardHydrated, setCorrectionDiscardHydrated] =
+    useState(false);
+
   const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
   const prevPositions = React.useRef<Record<string, DOMRect>>({});
 
@@ -1510,8 +1521,13 @@ export default function MCDashboard() {
     params.set("dateField", dateField);
 
     params.set("rangeType", numberRangeType);
+
     if (pinnedIds.length) {
       params.set("pinnedIds", pinnedIds.join(","));
+    }
+
+    if (discardedCorrectionIds.length) {
+      params.set("discardedCorrectionIds", discardedCorrectionIds.join(","));
     }
 
     if (searchClient.trim()) params.set("client", searchClient.trim());
@@ -1665,6 +1681,7 @@ export default function MCDashboard() {
     sortDir,
     refreshKey,
     pinnedIds,
+    discardedCorrectionIds,
   ]);
 
   const statusOptions = useMemo(() => {
@@ -1836,17 +1853,32 @@ export default function MCDashboard() {
   // -----------------------------
 
   const displayRows = useMemo(() => {
-    return [...unified].sort((a, b) => {
-      const aPinned = pinnedIds.includes(rowKey(a)) ? 1 : 0;
-      const bPinned = pinnedIds.includes(rowKey(b)) ? 1 : 0;
+    const correctionRows: UnifiedRow[] = [];
+    const pinnedRows: UnifiedRow[] = [];
+    const normalRows: UnifiedRow[] = [];
 
-      if (aPinned !== bPinned) {
-        return bPinned - aPinned;
+    for (const report of unified) {
+      const key = rowKey(report);
+
+      const hasCorrection =
+        isCorrectionPriorityStatus(report.status) &&
+        !discardedCorrectionIds.includes(key);
+
+      if (hasCorrection) {
+        correctionRows.push(report);
+        continue;
       }
 
-      return 0;
-    });
-  }, [unified, pinnedIds]);
+      if (pinnedIds.includes(key)) {
+        pinnedRows.push(report);
+        continue;
+      }
+
+      normalRows.push(report);
+    }
+
+    return [...correctionRows, ...pinnedRows, ...normalRows];
+  }, [unified, pinnedIds, discardedCorrectionIds]);
 
   const total = serverTotal;
   const totalPages = serverTotalPages;
@@ -3095,6 +3127,59 @@ export default function MCDashboard() {
   }, [COL_STORAGE_KEY, colsHydrated, selectedCols]);
 
   useEffect(() => {
+    if (!CORRECTION_DISCARD_STORAGE_KEY) {
+      setCorrectionDiscardHydrated(true);
+      return;
+    }
+
+    try {
+      const raw = localStorage.getItem(CORRECTION_DISCARD_STORAGE_KEY);
+
+      if (raw) {
+        const parsed = JSON.parse(raw);
+
+        if (Array.isArray(parsed)) {
+          setDiscardedCorrectionIds(parsed);
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setCorrectionDiscardHydrated(true);
+    }
+  }, [CORRECTION_DISCARD_STORAGE_KEY]);
+
+  useEffect(() => {
+    if (!CORRECTION_DISCARD_STORAGE_KEY) return;
+    if (!correctionDiscardHydrated) return;
+
+    localStorage.setItem(
+      CORRECTION_DISCARD_STORAGE_KEY,
+      JSON.stringify(discardedCorrectionIds),
+    );
+  }, [
+    CORRECTION_DISCARD_STORAGE_KEY,
+    correctionDiscardHydrated,
+    discardedCorrectionIds,
+  ]);
+
+  useEffect(() => {
+    setDiscardedCorrectionIds((prev) => {
+      const next = prev.filter((key) => {
+        const report = unified.find((r) => rowKey(r) === key);
+
+        if (!report) {
+          return true;
+        }
+
+        return isCorrectionPriorityStatus(report.status);
+      });
+
+      return next.length === prev.length ? prev : next;
+    });
+  }, [unified]);
+
+  useEffect(() => {
     if (!PIN_STORAGE_KEY) {
       setPinsHydrated(true);
       return;
@@ -3129,6 +3214,24 @@ export default function MCDashboard() {
       prev.includes(key) ? prev.filter((x) => x !== key) : [key, ...prev],
     );
   };
+
+  function discardCorrectionPriority(r: UnifiedRow) {
+    const ok = window.confirm(
+      "Remove this correction from priority?\n\n" +
+        "The correction will NOT be resolved or deleted. " +
+        "The report will remain on your dashboard.",
+    );
+
+    if (!ok) return;
+
+    const key = rowKey(r);
+
+    setDiscardedCorrectionIds((prev) => {
+      if (prev.includes(key)) return prev;
+
+      return [...prev, key];
+    });
+  }
 
   useEffect(() => {
     if (!colOpen) return;
@@ -3928,9 +4031,9 @@ export default function MCDashboard() {
     };
   }, [selectedReport?.id, selectedReport?.kind, selectedReport?.formType]);
 
-  if (!colsHydrated || !pinsHydrated) {
-    return <div className="p-6 text-slate-500">Loading dashboard…</div>;
-  }
+if (!colsHydrated || !pinsHydrated || !correctionDiscardHydrated) {
+  return <div className="p-6 text-slate-500">Loading dashboard…</div>;
+}
 
   function openSelectedForCorrection(kinds: CorrectionLaunchKind[]) {
     const selected = selectedReportObjects;
@@ -4032,6 +4135,15 @@ export default function MCDashboard() {
   const selectedHasCorrectionLockedStatus = selectedReportObjects.some((r) =>
     isCorrectionFlowStatus(String(r.status)),
   );
+
+  function isCorrectionPriorityStatus(status: string) {
+    return [
+      "CORRECTION_REQUESTED",
+      "UNDER_CORRECTION_UPDATE",
+      "CHANGE_REQUESTED",
+      "UNDER_CHANGE_UPDATE",
+    ].includes(String(status));
+  }
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -4867,6 +4979,10 @@ export default function MCDashboard() {
                     const key = rowKey(r);
                     const rowBusy = updatingKey === key;
 
+                    const isCorrectionImportant =
+                      isCorrectionPriorityStatus(r.status) &&
+                      !discardedCorrectionIds.includes(key);
+
                     const badge =
                       r.kind === "MICRO"
                         ? r.formType === "STERILITY" || r.formType === "APE"
@@ -4890,7 +5006,11 @@ export default function MCDashboard() {
                         }}
                         className={classNames(
                           "border-t hover:bg-slate-50",
-                          isPinned(r) && "bg-blue-50/40",
+                          isCorrectionImportant
+                            ? "bg-red-50/70"
+                            : isPinned(r)
+                              ? "bg-blue-50/40"
+                              : "",
                         )}
                       >
                         <td className="pl-2 pr-1 py-3 text-center">
@@ -4958,15 +5078,23 @@ export default function MCDashboard() {
                         ))}
 
                         <td className="px-4 py-3">
-                          <span
-                            className={classNames(
-                              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
-                              badge ||
-                                "bg-slate-100 text-slate-800 ring-1 ring-slate-200",
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={classNames(
+                                "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
+                                badge ||
+                                  "bg-slate-100 text-slate-800 ring-1 ring-slate-200",
+                              )}
+                            >
+                              {niceStatus(String(r.status))}
+                            </span>
+
+                            {isCorrectionImportant && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-700 ring-1 ring-red-200 whitespace-nowrap">
+                                ⚠ Correction
+                              </span>
                             )}
-                          >
-                            {niceStatus(String(r.status))}
-                          </span>
+                          </div>
                         </td>
 
                         <td className="sticky right-0 z-20 bg-white px-4 py-3 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
@@ -5079,6 +5207,32 @@ export default function MCDashboard() {
                                 </button>
                               )
                             )}
+                            {isCorrectionImportant && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  discardCorrectionPriority(r);
+                                }}
+                                className="
+      inline-flex h-7 w-7
+      items-center justify-center
+      rounded-full
+      border border-slate-200
+      bg-white
+      text-sm font-bold
+      text-slate-400
+      transition
+      hover:border-red-200
+      hover:bg-red-50
+      hover:text-red-600
+    "
+                                title="Dismiss correction priority"
+                                aria-label="Dismiss correction priority"
+                              >
+                                ×
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -5136,7 +5290,7 @@ export default function MCDashboard() {
                 onChange={(e) => setPerPage(Number(e.target.value))}
                 className="w-24 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
               >
-                {[10, 20, 50].map((n) => (
+                {[10, 20, 50, 100].map((n) => (
                   <option key={n} value={n}>
                     {n}
                   </option>

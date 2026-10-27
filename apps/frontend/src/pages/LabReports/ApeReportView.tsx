@@ -3,6 +3,7 @@ import * as QRCode from "qrcode";
 import pjla from "../../assets/pjla.png";
 import ilacmra from "../../assets/ilacmra.png";
 import { getCorrections } from "../../utils/apeReportValidation";
+import { getApeChildQrUrl } from "../../utils/reportQrUrl";
 
 type ReportStatus = string;
 
@@ -442,15 +443,17 @@ export default function ApeReportView(props: ApeReportViewProps) {
   const parentReportId =
     report?.parentReportId || report?.workflowReportId || null;
 
-  const qrValue =
-    parentReportId || reportId
-      ? JSON.stringify({
-          t: "ape-report",
-          id: parentReportId || reportId,
-          childId: reportId,
-          reportType: report?.reportType || "APE_REPORT",
-        })
-      : "";
+  // const qrValue =
+  //   parentReportId || reportId
+  //     ? JSON.stringify({
+  //         t: "ape-report",
+  //         id: parentReportId || reportId,
+  //         childId: reportId,
+  //         reportType: report?.reportType || "APE_REPORT",
+  //       })
+  //     : "";
+
+  const qrValue = getApeChildQrUrl(parentReportId, "APE_REPORT");
 
   useEffect(() => {
     let alive = true;

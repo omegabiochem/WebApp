@@ -1,74 +1,100 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 
 import type { ChemistryMixReportDTO } from "../../../../SharedTypes/Reports/ChemistryMixReportDto";
 import type { COAReportDTO } from "../../../../SharedTypes/Reports/COAReportDto";
 import { api } from "../../lib/api";
 import ChemistryMixSubmissionForm from "./ChemistryMixSubmissionForm";
 import COAReportForm from "./COAReportForm";
-
-type FormType = "CHEMISTRY_MIX" | "COA";
-
-type BaseReport = { id: string; formType: FormType };
+import ChemistryMixReportFormView from "./ChemistryMixReportFormView";
+import COAReportFormView from "./COAReportFormView";
 
 type AnyReportDTO =
-  | (BaseReport & ChemistryMixReportDTO)
-  | (BaseReport & COAReportDTO);
-
-// Type guards (optional but nice for TS)
-function isChemistry(r: AnyReportDTO): r is BaseReport & ChemistryMixReportDTO {
-  return r.formType === "CHEMISTRY_MIX";
-}
-function isCOA(r: AnyReportDTO): r is BaseReport & COAReportDTO {
-  return r.formType === "COA";
-}
+  | (ChemistryMixReportDTO & { id: string; formType: "CHEMISTRY_MIX" })
+  | (COAReportDTO & { id: string; formType: "COA" });
 
 export default function ChemistryMixReportFormWrapper() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
+  const qrReadOnly = searchParams.get("qr") === "1";
+
   const [report, setReport] = useState<AnyReportDTO | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    let aborted = false;
+    let cancelled = false;
 
-    (async () => {
+    async function loadReport() {
+      setLoading(true);
+      setErr(null);
+      setReport(null);
+
+      if (!id) {
+        setErr("Missing report ID.");
+        setLoading(false);
+        return;
+      }
+
       try {
-        setLoading(true);
-        const data = await api<AnyReportDTO>(`/chemistry-reports/${id}`);
-        if (!aborted) {
-          setReport(data);
-        }
-      } catch (e: any) {
-        if (!aborted) {
-          setErr(e.message);
+        const data = await api<AnyReportDTO>(
+          `/chemistry-reports/${encodeURIComponent(id)}`,
+        );
+        if (!cancelled) setReport(data);
+      } catch (error: any) {
+        if (!cancelled) {
+          setErr(
+            error?.body?.message ?? error?.message ?? "Failed to load report.",
+          );
         }
       } finally {
-        if (!aborted) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
-    })();
+    }
+
+    void loadReport();
     return () => {
-      aborted = true;
+      cancelled = true;
     };
   }, [id]);
 
-  if (loading) return <div className="p-4">Loading…</div>;
-  if (err) return <div className="p-4 text-red-500">{err}</div>;
-  if (!report) return <div className="p-4 text-red-500">Report not found</div>;
+  if (loading) return <div className="p-4">Loading report…</div>;
+  if (err) return <div className="p-4 text-red-600">{String(err)}</div>;
+  if (!report) return <div className="p-4 text-red-600">Report not found.</div>;
 
-  if (isChemistry(report)) {
+  if (qrReadOnly) {
+    return (
+      <main className="mx-auto max-w-6xl px-3 py-5 sm:px-6">
+        <div className="mb-4 rounded-lg border bg-white p-3 text-sm text-slate-600">
+          OMEGA LIMS · Read-only report
+        </div>
+        {report.formType === "CHEMISTRY_MIX" ? (
+          <ChemistryMixReportFormView
+            report={report}
+            onClose={() => {}}
+            showSwitcher={false}
+            pane="REPORT"
+          />
+        ) : report.formType === "COA" ? (
+          <COAReportFormView
+            report={report}
+            onClose={() => {}}
+            showSwitcher={false}
+            pane="REPORT"
+          />
+        ) : (
+          <div className="p-4">Unsupported report type.</div>
+        )}
+      </main>
+    );
+  }
+
+  // Existing dashboard editing and correction links stay unchanged.
+  if (report.formType === "CHEMISTRY_MIX") {
     return <ChemistryMixSubmissionForm report={report} />;
   }
-
-  if (isCOA(report)) {
+  if (report.formType === "COA") {
     return <COAReportForm report={report} />;
   }
-
-  return (
-    <div className="p-4 text-sm text-slate-600">
-      Unknown form type: {String((report as any).formType)}
-    </div>
-  );
+  return <div className="p-4">Unknown form type.</div>;
 }

@@ -260,10 +260,17 @@ export default function ChemistryMixSubmissionForm({
 
   const [status, setStatus] = useState(report?.status || "DRAFT");
 
+  // A client correcting a submitted form must see every selectable active.
+  // Staff correction screens keep the existing report layout.
+  const isClientCorrectionUpdate =
+    role === "CLIENT" &&
+    (status === "UNDER_CHANGE_UPDATE" || status === "UNDER_CORRECTION_UPDATE");
+
   const isSubmissionForm =
     status === "DRAFT" ||
-    status === "UNDER_DRAFT_REVIEW" || // ✅
-    status === "SUBMITTED_BY_CLIENT";
+    status === "UNDER_DRAFT_REVIEW" ||
+    status === "SUBMITTED_BY_CLIENT" ||
+    isClientCorrectionUpdate;
 
   const isReportView = !isSubmissionForm;
 
@@ -520,61 +527,59 @@ export default function ChemistryMixSubmissionForm({
 
   const canShowFloatingUi = !embedded || isWorkspaceActive;
 
-const backToDashboard = () => {
-  if (returnTo) {
-    return navigate(decodeURIComponent(returnTo), {
+  const backToDashboard = () => {
+    if (returnTo) {
+      return navigate(decodeURIComponent(returnTo), {
+        replace: true,
+      });
+    }
+
+    if (role === "CLIENT") {
+      return navigate("/clientDashboard", {
+        replace: true,
+      });
+    }
+
+    if (role === "FRONTDESK") {
+      return navigate("/frontdeskDashboard", {
+        replace: true,
+      });
+    }
+
+    if (role === "MC") {
+      return navigate("/mcDashboard", {
+        replace: true,
+      });
+    }
+
+    if (role === "CHEMISTRY") {
+      return navigate("/chemistryDashboard", {
+        replace: true,
+      });
+    }
+
+    if (role === "QA") {
+      return navigate("/qaDashboard", {
+        replace: true,
+      });
+    }
+
+    if (role === "ADMIN") {
+      return navigate("/adminDashboard", {
+        replace: true,
+      });
+    }
+
+    if (role === "SYSTEMADMIN") {
+      return navigate("/systemAdminDashboard", {
+        replace: true,
+      });
+    }
+
+    return navigate("/home", {
       replace: true,
     });
-  }
-
-  if (role === "CLIENT") {
-    return navigate("/clientDashboard", {
-      replace: true,
-    });
-  }
-
-  if (role === "FRONTDESK") {
-    return navigate("/frontdeskDashboard", {
-      replace: true,
-    });
-  }
-
- 
-
-  if (role === "MC") {
-    return navigate("/mcDashboard", {
-      replace: true,
-    });
-  }
-
-  if (role === "CHEMISTRY") {
-    return navigate("/chemistryDashboard", {
-      replace: true,
-    });
-  }
-
-  if (role === "QA") {
-    return navigate("/qaDashboard", {
-      replace: true,
-    });
-  }
-
-  if (role === "ADMIN") {
-    return navigate("/adminDashboard", {
-      replace: true,
-    });
-  }
-
-  if (role === "SYSTEMADMIN") {
-    return navigate("/systemAdminDashboard", {
-      replace: true,
-    });
-  }
-
-  return navigate("/home", {
-    replace: true,
-  });
-};
+  };
 
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
   const openCorrections = useMemo(
@@ -911,7 +916,8 @@ const backToDashboard = () => {
           !e.formulaContent &&
           !e.sopNo &&
           !e.result &&
-          !e.dateTestedInitial,
+          !e.dateTestedInitial &&
+          !e.otherName,
       )
     );
   }
@@ -1231,7 +1237,24 @@ const backToDashboard = () => {
       (await runBusy("SAVE", async () => {
         const values = makeValues();
         validateAndSetErrors(values);
-        validateActiveRows(values.actives || [], effectiveFormRole);
+        const okRows = validateActiveRows(
+          values.actives || [],
+          effectiveFormRole,
+        );
+
+        // During a CLIENT active-selection correction, do not save an
+        // incomplete selection (including newly checked actives).
+        if (
+          isClientCorrectionUpdate &&
+          isFieldRequestedForCorrection("actives") &&
+          !okRows
+        ) {
+          alert(
+            "Please complete all required details for every selected active " +
+              "(Raw/Bulk Active Lot #, Formula Content, and OTHER name if applicable).",
+          );
+          return false;
+        }
 
         // if (!okFields) {
         //   alert("⚠️ Please fix the highlighted fields before saving.");
@@ -1473,6 +1496,20 @@ const backToDashboard = () => {
         okRows = validateActiveRows(values.actives || [], effectiveFormRole);
       }
 
+      // Also validate actives when the client finishes a correction.
+      // Central correction approval itself must remain exempt.
+      if (
+        !centralApproval &&
+        isClientCorrectionUpdate &&
+        isFieldRequestedForCorrection("actives") &&
+        !okRows
+      ) {
+        alert(
+          "Complete the required details for all selected actives before continuing.",
+        );
+        return false;
+      }
+
       const requiresFullValidation =
         newStatus === "UNDER_DRAFT_REVIEW" ||
         newStatus === "SUBMITTED_BY_CLIENT" ||
@@ -1699,17 +1736,17 @@ const backToDashboard = () => {
     });
   }
 
-const fallbackRoute = useMemo(() => {
-  if (role === "CLIENT") return "/clientDashboard";
-  if (role === "FRONTDESK") return "/frontdeskDashboard";
-  if (role === "MC") return "/mcDashboard";
-  if (role === "CHEMISTRY") return "/chemistryDashboard";
-  if (role === "QA") return "/qaDashboard";
-  if (role === "ADMIN") return "/adminDashboard";
-  if (role === "SYSTEMADMIN") return "/systemAdminDashboard";
+  const fallbackRoute = useMemo(() => {
+    if (role === "CLIENT") return "/clientDashboard";
+    if (role === "FRONTDESK") return "/frontdeskDashboard";
+    if (role === "MC") return "/mcDashboard";
+    if (role === "CHEMISTRY") return "/chemistryDashboard";
+    if (role === "QA") return "/qaDashboard";
+    if (role === "ADMIN") return "/adminDashboard";
+    if (role === "SYSTEMADMIN") return "/systemAdminDashboard";
 
-  return "/home";
-}, [role]);
+    return "/home";
+  }, [role]);
 
   const handleClose = () => {
     if (onClose) {
@@ -2163,9 +2200,7 @@ const fallbackRoute = useMemo(() => {
           <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-center">
             <div />
             <div className="text-[18px] font-bold text-center underline whitespace-nowrap">
-              {status === "DRAFT" ||
-              status === "UNDER_DRAFT_REVIEW" ||
-              status === "SUBMITTED_BY_CLIENT"
+              {isSubmissionForm
                 ? "CHEMISTRY SUBMISSION FORM"
                 : "CHEMISTRY REPORT"}
             </div>

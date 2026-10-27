@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
+import { saveReportLoginRedirect } from "../utils/reportLoginRedirect";
 
 export default function RequireAuth({ children }: { children: ReactNode }) {
   const { user, token, login, logout } = useAuth();
@@ -30,6 +31,15 @@ export default function RequireAuth({ children }: { children: ReactNode }) {
       })
       .finally(() => setChecking(false));
   }, []); // run once on mount
+
+  useEffect(() => {
+  if (user?.mustChangePassword) {
+    saveReportLoginRedirect({
+      pathname: loc.pathname,
+      search: loc.search,
+    });
+  }
+}, [user?.mustChangePassword, loc.pathname, loc.search]);
 
   if (checking) return null;
 
