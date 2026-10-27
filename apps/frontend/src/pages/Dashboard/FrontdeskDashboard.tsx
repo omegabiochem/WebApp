@@ -51,6 +51,16 @@ import {
 } from "../../utils/apeReportFormWorkflow";
 import { socket } from "../../lib/socket";
 
+// Avoid sending a new server request for each keystroke.
+function useDebouncedValue<T>(value: T, delayMs = 300): T {
+  const [debounced, setDebounced] = React.useState(value);
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
+
 // -----------------------------
 // Types
 // -----------------------------
@@ -707,7 +717,7 @@ export default function FrontDeskDashboard() {
       setRefreshKey((x) => x + 1);
 
       liveRefreshTimerRef.current = null;
-    }, 250);
+    }, 750);
   }, []);
 
   useEffect(() => {
@@ -938,6 +948,14 @@ export default function FrontDeskDashboard() {
     return workspaceIds.map((id) => map.get(id)).filter(Boolean) as Report[];
   }, [workspaceIds, reports, selectedReportsById]);
 
+  const debouncedSearchClient = useDebouncedValue(searchClient);
+  const debouncedSearchReport = useDebouncedValue(searchReport);
+  const debouncedSearch = useDebouncedValue(search);
+  const debouncedFormNoFrom = useDebouncedValue(formNoFrom);
+  const debouncedFormNoTo = useDebouncedValue(formNoTo);
+  const debouncedReportNoFrom = useDebouncedValue(reportNoFrom);
+  const debouncedReportNoTo = useDebouncedValue(reportNoTo);
+
   const fetchDashboardReports = async () => {
     const params = new URLSearchParams();
 
@@ -959,18 +977,18 @@ export default function FrontDeskDashboard() {
       );
     }
 
-    if (searchClient.trim()) params.set("client", searchClient.trim());
-    if (searchReport.trim()) params.set("report", searchReport.trim());
-    if (search.trim()) params.set("q", search.trim());
+    if (debouncedSearchClient.trim()) params.set("client", debouncedSearchClient.trim());
+    if (debouncedSearchReport.trim()) params.set("report", debouncedSearchReport.trim());
+    if (debouncedSearch.trim()) params.set("q", debouncedSearch.trim());
 
     if (fromDate) params.set("from", fromDate);
     if (toDate) params.set("to", toDate);
 
-    if (formNoFrom.trim()) params.set("formFrom", formNoFrom.trim());
-    if (formNoTo.trim()) params.set("formTo", formNoTo.trim());
+    if (debouncedFormNoFrom.trim()) params.set("formFrom", debouncedFormNoFrom.trim());
+    if (debouncedFormNoTo.trim()) params.set("formTo", debouncedFormNoTo.trim());
 
-    if (reportNoFrom.trim()) params.set("reportFrom", reportNoFrom.trim());
-    if (reportNoTo.trim()) params.set("reportTo", reportNoTo.trim());
+    if (debouncedReportNoFrom.trim()) params.set("reportFrom", debouncedReportNoFrom.trim());
+    if (debouncedReportNoTo.trim()) params.set("reportTo", debouncedReportNoTo.trim());
 
     return api<{
       rows: Report[];
@@ -991,6 +1009,7 @@ export default function FrontDeskDashboard() {
     silentRefreshNextRef.current = false;
 
     async function loadDashboardReports() {
+      if (!filtersHydrated || !pinsHydrated || !correctionDiscardHydrated) return;
       try {
         if (!silentRefresh) {
           setLoading(true);
@@ -1076,20 +1095,23 @@ export default function FrontDeskDashboard() {
       abort = true;
     };
   }, [
+    filtersHydrated,
+    pinsHydrated,
+    correctionDiscardHydrated,
     page,
     perPage,
     formFilter,
     statusFilter,
-    searchClient,
-    searchReport,
-    search,
+    debouncedSearchClient,
+    debouncedSearchReport,
+    debouncedSearch,
     fromDate,
     toDate,
     numberRangeType,
-    formNoFrom,
-    formNoTo,
-    reportNoFrom,
-    reportNoTo,
+    debouncedFormNoFrom,
+    debouncedFormNoTo,
+    debouncedReportNoFrom,
+    debouncedReportNoTo,
     sortBy,
     sortDir,
     refreshKey,
@@ -1137,7 +1159,11 @@ export default function FrontDeskDashboard() {
       }
     };
 
-    const timer = window.setInterval(refreshAttachmentIndicators, 5000);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refreshAttachmentIndicators();
+      }
+    }, 30000);
 
     return () => {
       cancelled = true;
@@ -1599,7 +1625,9 @@ export default function FrontDeskDashboard() {
     if (perPage !== 10) sp.set("pp", String(perPage));
     if (pageClamped !== 1) sp.set("p", String(pageClamped));
 
-    setSearchParams(sp, { replace: true });
+    if (sp.toString() !== searchParams.toString()) {
+      setSearchParams(sp, { replace: true });
+    }
   }, [
     formFilter,
     statusFilter,

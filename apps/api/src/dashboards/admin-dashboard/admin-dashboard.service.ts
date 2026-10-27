@@ -188,9 +188,7 @@ export class AdminDashboardService {
     const perPage = Math.min(toInt(query.perPage, 10), 100);
 
     const pinnedIds = parsePinnedIds(query.pinnedIds);
-    const discardedCorrectionIds = parsePinnedIds(
-      query.discardedCorrectionIds,
-    );
+    const discardedCorrectionIds = parsePinnedIds(query.discardedCorrectionIds);
     const discardedCorrectionSet = new Set(discardedCorrectionIds);
 
     const pinOrder = new Map(pinnedIds.map((id, index) => [id, index]));
@@ -224,12 +222,11 @@ export class AdminDashboardService {
     //   } as any;
     // }
 
-
     // ✅ ALL means all statuses.
-// Only filter when a specific status is selected.
-if (status !== 'ALL') {
-  where.status = status;
-}
+    // Only filter when a specific status is selected.
+    if (status !== 'ALL') {
+      where.status = status;
+    }
 
     const and: Prisma.DashboardReportWhereInput[] = [];
 
@@ -309,99 +306,208 @@ if (status !== 'ALL') {
     const hasFormRange = !!query.formFrom || !!query.formTo;
     const hasReportRange = !!query.reportFrom || !!query.reportTo;
 
-    /*
-     * Load all rows matching the active filters first.
-     * Priority ordering must happen before pagination.
-     */
-    const allRows = await this.prisma.dashboardReport.findMany({
-      where,
-      orderBy: {
-        [dateField]: sort,
-      } as any,
-    });
+    // Numeric form/report sequence filters retain their original semantics.
+    // These need indexed numeric columns for further optimization.
+    if (
+      (rangeType === 'FORM' && hasFormRange) ||
+      (rangeType === 'REPORT' && hasReportRange)
+    ) {
+      /*
+       * Load all rows matching the active filters first.
+       * Priority ordering must happen before pagination.
+       */
+      const allRows = await this.prisma.dashboardReport.findMany({
+        where,
+        orderBy: {
+          [dateField]: sort,
+        } as any,
+      });
 
-    /*
-     * Apply optional form/report number range.
-     */
-    const filteredRows =
-      rangeType === 'FORM' && hasFormRange
-        ? allRows.filter((r) =>
-            isInRange(
-              extractSequence(r.formNumber),
-              query.formFrom,
-              query.formTo,
-            ),
-          )
-        : rangeType === 'REPORT' && hasReportRange
+      /*
+       * Apply optional form/report number range.
+       */
+      const filteredRows =
+        rangeType === 'FORM' && hasFormRange
           ? allRows.filter((r) =>
               isInRange(
-                extractSequence(r.reportNumber),
-                query.reportFrom,
-                query.reportTo,
+                extractSequence(r.formNumber),
+                query.formFrom,
+                query.formTo,
               ),
             )
-          : allRows;
+          : rangeType === 'REPORT' && hasReportRange
+            ? allRows.filter((r) =>
+                isInRange(
+                  extractSequence(r.reportNumber),
+                  query.reportFrom,
+                  query.reportTo,
+                ),
+              )
+            : allRows;
 
-    /*
-     * Priority:
-     * 1. Active correction not dismissed by this user
-     * 2. Pinned reports
-     * 3. Normal reports
-     */
-    const correctionRows: typeof filteredRows = [];
-    const pinnedRows: typeof filteredRows = [];
-    const normalRows: typeof filteredRows = [];
+      /*
+       * Priority:
+       * 1. Active correction not dismissed by this user
+       * 2. Pinned reports
+       * 3. Normal reports
+       */
+      const correctionRows: typeof filteredRows = [];
+      const pinnedRows: typeof filteredRows = [];
+      const normalRows: typeof filteredRows = [];
 
-    for (const row of filteredRows) {
-      const sourceId = String(row.sourceId);
+      for (const row of filteredRows) {
+        const sourceId = String(row.sourceId);
 
-      const correctionImportant =
-        isCorrectionPriorityStatus(String(row.status)) &&
-        !discardedCorrectionSet.has(sourceId);
+        const correctionImportant =
+          isCorrectionPriorityStatus(String(row.status)) &&
+          !discardedCorrectionSet.has(sourceId);
 
-      if (correctionImportant) {
-        correctionRows.push(row);
-        continue;
+        if (correctionImportant) {
+          correctionRows.push(row);
+          continue;
+        }
+
+        if (pinnedIds.includes(sourceId)) {
+          pinnedRows.push(row);
+          continue;
+        }
+
+        normalRows.push(row);
       }
 
-      if (pinnedIds.includes(sourceId)) {
-        pinnedRows.push(row);
-        continue;
-      }
+      /*
+       * Preserve the user's explicit pin order.
+       */
+      pinnedRows.sort((a, b) => {
+        const ai = pinOrder.get(String(a.sourceId)) ?? Number.MAX_SAFE_INTEGER;
+        const bi = pinOrder.get(String(b.sourceId)) ?? Number.MAX_SAFE_INTEGER;
 
-      normalRows.push(row);
+        return ai - bi;
+      });
+
+      const orderedRows = [...correctionRows, ...pinnedRows, ...normalRows];
+
+      /*
+       * Pagination last.
+       */
+      const total = orderedRows.length;
+      const totalPages = Math.max(1, Math.ceil(total / perPage));
+      const safePage = Math.min(page, totalPages);
+      const safeSkip = (safePage - 1) * perPage;
+
+      return {
+        rows: orderedRows
+          .slice(safeSkip, safeSkip + perPage)
+          .map(mapDashboardRow),
+        total,
+        page: safePage,
+        perPage,
+        totalPages,
+      };
     }
 
-    /*
-     * Preserve the user's explicit pin order.
-     */
-    pinnedRows.sort((a, b) => {
-      const ai =
-        pinOrder.get(String(a.sourceId)) ?? Number.MAX_SAFE_INTEGER;
-      const bi =
-        pinOrder.get(String(b.sourceId)) ?? Number.MAX_SAFE_INTEGER;
-
-      return ai - bi;
-    });
-
-    const orderedRows = [
-      ...correctionRows,
-      ...pinnedRows,
-      ...normalRows,
+    // Priority tiers must be mutually exclusive and applied BEFORE pagination.
+    // A dismissed correction is treated as pinned (if pinned) or normal.
+    const correctionStatuses = [
+      'CORRECTION_REQUESTED',
+      'UNDER_CORRECTION_UPDATE',
+      'CHANGE_REQUESTED',
+      'UNDER_CHANGE_UPDATE',
     ];
+    const isPriorityCorrection: Prisma.DashboardReportWhereInput = {
+      AND: [
+        { status: { in: correctionStatuses } },
+        ...(discardedCorrectionIds.length
+          ? [{ sourceId: { notIn: discardedCorrectionIds } }]
+          : []),
+      ],
+    };
+    const isNotPriorityCorrection: Prisma.DashboardReportWhereInput = {
+      OR: [
+        { status: { notIn: correctionStatuses } },
+        ...(discardedCorrectionIds.length
+          ? [{ sourceId: { in: discardedCorrectionIds } }]
+          : []),
+      ],
+    };
+    const correctionWhere: Prisma.DashboardReportWhereInput = {
+      AND: [where, isPriorityCorrection],
+    };
+    const pinnedWhere: Prisma.DashboardReportWhereInput = {
+      AND: [where, isNotPriorityCorrection, { sourceId: { in: pinnedIds } }],
+    };
+    const normalWhere: Prisma.DashboardReportWhereInput = {
+      AND: [
+        where,
+        isNotPriorityCorrection,
+        ...(pinnedIds.length ? [{ sourceId: { notIn: pinnedIds } }] : []),
+      ],
+    };
 
-    /*
-     * Pagination last.
-     */
-    const total = orderedRows.length;
+    const [correctionCount, pinnedRows, normalCount] = await Promise.all([
+      this.prisma.dashboardReport.count({ where: correctionWhere }),
+      this.prisma.dashboardReport.findMany({ where: pinnedWhere }),
+      this.prisma.dashboardReport.count({ where: normalWhere }),
+    ]);
+    // Pinned rows are intentionally few, and retain the order chosen by user.
+    pinnedRows.sort(
+      (a, b) =>
+        (pinOrder.get(String(a.sourceId)) ?? Number.MAX_SAFE_INTEGER) -
+        (pinOrder.get(String(b.sourceId)) ?? Number.MAX_SAFE_INTEGER),
+    );
+    const total = correctionCount + pinnedRows.length + normalCount;
     const totalPages = Math.max(1, Math.ceil(total / perPage));
     const safePage = Math.min(page, totalPages);
-    const safeSkip = (safePage - 1) * perPage;
+    const offset = (safePage - 1) * perPage;
+    const orderBy = [
+      { [dateField]: sort },
+      { id: 'asc' },
+    ] as Prisma.DashboardReportOrderByWithRelationInput[];
+
+    let remaining = perPage;
+    const rows: typeof pinnedRows = [];
+
+    const correctionOffset = Math.min(offset, correctionCount);
+    if (correctionOffset < correctionCount) {
+      const take = Math.min(remaining, correctionCount - correctionOffset);
+      rows.push(
+        ...(await this.prisma.dashboardReport.findMany({
+          where: correctionWhere,
+          orderBy,
+          skip: correctionOffset,
+          take,
+        })),
+      );
+      remaining -= take;
+    }
+
+    const pinsOffset = Math.min(
+      Math.max(0, offset - correctionCount),
+      pinnedRows.length,
+    );
+    if (remaining > 0 && pinsOffset < pinnedRows.length) {
+      const pagePins = pinnedRows.slice(pinsOffset, pinsOffset + remaining);
+      rows.push(...pagePins);
+      remaining -= pagePins.length;
+    }
+
+    if (remaining > 0) {
+      const normalOffset = Math.max(
+        0,
+        offset - correctionCount - pinnedRows.length,
+      );
+      rows.push(
+        ...(await this.prisma.dashboardReport.findMany({
+          where: normalWhere,
+          orderBy,
+          skip: normalOffset,
+          take: remaining,
+        })),
+      );
+    }
 
     return {
-      rows: orderedRows
-        .slice(safeSkip, safeSkip + perPage)
-        .map(mapDashboardRow),
+      rows: rows.map(mapDashboardRow),
       total,
       page: safePage,
       perPage,

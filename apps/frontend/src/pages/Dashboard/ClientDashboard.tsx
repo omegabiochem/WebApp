@@ -815,6 +815,11 @@ export default function ClientDashboard() {
   const navigate = useNavigate();
   const { user, token } = useAuth();
 
+  const creatorNamesCacheRef = React.useRef<Map<string, string>>(new Map());
+  const creatorInFlightRef = React.useRef<Map<string, Promise<string>>>(
+    new Map(),
+  );
+
   async function enrichJJLCreatedByNames(rows: Report[]): Promise<Report[]> {
     const enrichedRows = await Promise.all(
       rows.map(async (row) => {
@@ -832,18 +837,25 @@ export default function ClientDashboard() {
         }
 
         try {
-          const fullReport = await api<any>(getReportDetailsEndpoint(row), {
-            method: "GET",
-          });
+          const cached = creatorNamesCacheRef.current.get(row.id);
+          if (cached) return { ...row, createdByName: cached };
 
-          const resolvedName = getSuppliedCreatedByName(fullReport);
+          let pending = creatorInFlightRef.current.get(row.id);
+          if (!pending) {
+            pending = api<any>(getReportDetailsEndpoint(row), { method: "GET" })
+              .then((fullReport) => {
+                const resolvedName = getSuppliedCreatedByName(fullReport);
+                if (resolvedName)
+                  creatorNamesCacheRef.current.set(row.id, resolvedName);
+                return resolvedName;
+              })
+              .finally(() => creatorInFlightRef.current.delete(row.id));
+            creatorInFlightRef.current.set(row.id, pending);
+          }
+          const resolvedName = await pending;
 
           return {
             ...row,
-            createdBy:
-              String(fullReport?.createdBy || "").trim() ||
-              row.createdBy ||
-              null,
             createdByName: resolvedName || null,
           };
         } catch (error) {
@@ -1025,6 +1037,50 @@ export default function ClientDashboard() {
   const [reportNoFrom, setReportNoFrom] = useState(initialFilters.reportNoFrom);
   const [reportNoTo, setReportNoTo] = useState(initialFilters.reportNoTo);
 
+  // Only the server fetch is debounced; filter controls remain responsive.
+  const [debouncedFilters, setDebouncedFilters] = useState([
+    searchClient,
+    searchReport,
+    search,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+  ]);
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () =>
+        setDebouncedFilters([
+          searchClient,
+          searchReport,
+          search,
+          formNoFrom,
+          formNoTo,
+          reportNoFrom,
+          reportNoTo,
+        ]),
+      300,
+    );
+    return () => window.clearTimeout(timer);
+  }, [
+    searchClient,
+    searchReport,
+    search,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+  ]);
+  const [
+    dbClient,
+    dbReport,
+    dbSearch,
+    dbFormFrom,
+    dbFormTo,
+    dbReportFrom,
+    dbReportTo,
+  ] = debouncedFilters;
+
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [selectedViewPane, setSelectedViewPane] = useState<ViewPane>("REPORT");
   const [selectedModalMode, setSelectedModalMode] = useState<"VIEW" | "UPDATE">(
@@ -1055,7 +1111,7 @@ export default function ClientDashboard() {
       setRefreshKey((x) => x + 1);
 
       liveRefreshTimerRef.current = null;
-    }, 250);
+    }, 750);
   }, []);
 
   useEffect(() => {
@@ -1338,6 +1394,7 @@ export default function ClientDashboard() {
   ]);
 
   useEffect(() => {
+    if (hydratedFromUrlRef.current) return;
     const next = getInitialClientFilters(searchParams, FILTER_STORAGE_KEY);
 
     setFormFilter(next.formFilter);
@@ -1523,20 +1580,20 @@ export default function ClientDashboard() {
       params.set("discardedCorrectionIds", discardedCorrectionIds.join(","));
     }
 
-    if (searchClient.trim()) params.set("client", searchClient.trim());
-    if (searchReport.trim()) params.set("report", searchReport.trim());
-    if (search.trim()) params.set("q", search.trim());
+    if (dbClient.trim()) params.set("client", dbClient.trim());
+    if (dbReport.trim()) params.set("report", dbReport.trim());
+    if (dbSearch.trim()) params.set("q", dbSearch.trim());
 
     const dateRange = getPresetRange(datePreset, fromDate, toDate);
 
     if (dateRange.from) params.set("from", dateRange.from);
     if (dateRange.to) params.set("to", dateRange.to);
 
-    if (formNoFrom.trim()) params.set("formFrom", formNoFrom.trim());
-    if (formNoTo.trim()) params.set("formTo", formNoTo.trim());
+    if (dbFormFrom.trim()) params.set("formFrom", dbFormFrom.trim());
+    if (dbFormTo.trim()) params.set("formTo", dbFormTo.trim());
 
-    if (reportNoFrom.trim()) params.set("reportFrom", reportNoFrom.trim());
-    if (reportNoTo.trim()) params.set("reportTo", reportNoTo.trim());
+    if (dbReportFrom.trim()) params.set("reportFrom", dbReportFrom.trim());
+    if (dbReportTo.trim()) params.set("reportTo", dbReportTo.trim());
 
     const result = await api<{
       rows: Report[];
@@ -1553,6 +1610,7 @@ export default function ClientDashboard() {
   };
 
   useEffect(() => {
+    if (!filtersHydrated || !pinsHydrated || !correctionDiscardHydrated) return;
     let abort = false;
 
     const silentRefresh = silentRefreshNextRef.current;
@@ -1651,22 +1709,25 @@ export default function ClientDashboard() {
     perPage,
     formFilter,
     statusFilter,
-    searchClient,
-    searchReport,
-    search,
+    dbClient,
+    dbReport,
+    dbSearch,
     sortBy,
     sortDir,
     datePreset,
     fromDate,
     toDate,
     numberRangeType,
-    formNoFrom,
-    formNoTo,
-    reportNoFrom,
-    reportNoTo,
+    dbFormFrom,
+    dbFormTo,
+    dbReportFrom,
+    dbReportTo,
     refreshKey,
     pinnedIds,
     discardedCorrectionIds,
+    filtersHydrated,
+    pinsHydrated,
+    correctionDiscardHydrated,
   ]);
 
   const displayRows = useMemo(() => {
@@ -1785,7 +1846,12 @@ export default function ClientDashboard() {
   }
 
   // Reset to page 1 when the core filters change
+  const skipInitialPageReset = React.useRef(true);
   useEffect(() => {
+    if (skipInitialPageReset.current) {
+      skipInitialPageReset.current = false;
+      return;
+    }
     setPage(1);
   }, [
     formFilter,

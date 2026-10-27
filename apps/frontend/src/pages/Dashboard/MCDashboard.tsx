@@ -1026,6 +1026,23 @@ export default function MCDashboard() {
   const [reportNoFrom, setReportNoFrom] = useState(initialFilters.reportNoFrom);
   const [reportNoTo, setReportNoTo] = useState(initialFilters.reportNoTo);
 
+  // Only API queries are debounced; input fields and saved filters remain responsive.
+  const [debouncedTypedFilters, setDebouncedTypedFilters] = useState<string[]>([
+    searchClient, searchReport, search, formNoFrom, formNoTo, reportNoFrom, reportNoTo,
+  ]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedTypedFilters([
+        searchClient, searchReport, search, formNoFrom, formNoTo, reportNoFrom, reportNoTo,
+      ]);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchClient, searchReport, search, formNoFrom, formNoTo, reportNoFrom, reportNoTo]);
+  const [debouncedClient, debouncedReport, debouncedSearch,
+    debouncedFormFrom, debouncedFormTo,
+    debouncedReportFrom, debouncedReportTo] = debouncedTypedFilters;
+
+
   const [sortBy, setSortBy] = useState<
     | "dateSent"
     | "reportNumber"
@@ -1064,7 +1081,7 @@ export default function MCDashboard() {
       setRefreshKey((x) => x + 1);
 
       liveRefreshTimerRef.current = null;
-    }, 250);
+    }, 750);
   }, []);
 
   useEffect(() => {
@@ -1530,20 +1547,20 @@ export default function MCDashboard() {
       params.set("discardedCorrectionIds", discardedCorrectionIds.join(","));
     }
 
-    if (searchClient.trim()) params.set("client", searchClient.trim());
-    if (searchReport.trim()) params.set("report", searchReport.trim());
-    if (search.trim()) params.set("q", search.trim());
+    if (debouncedClient.trim()) params.set("client", debouncedClient.trim());
+    if (debouncedReport.trim()) params.set("report", debouncedReport.trim());
+    if (debouncedSearch.trim()) params.set("q", debouncedSearch.trim());
 
     const dateRange = getPresetRange(datePreset, fromDate, toDate);
 
     if (dateRange.from) params.set("from", dateRange.from);
     if (dateRange.to) params.set("to", dateRange.to);
 
-    if (formNoFrom.trim()) params.set("formFrom", formNoFrom.trim());
-    if (formNoTo.trim()) params.set("formTo", formNoTo.trim());
+    if (debouncedFormFrom.trim()) params.set("formFrom", debouncedFormFrom.trim());
+    if (debouncedFormTo.trim()) params.set("formTo", debouncedFormTo.trim());
 
-    if (reportNoFrom.trim()) params.set("reportFrom", reportNoFrom.trim());
-    if (reportNoTo.trim()) params.set("reportTo", reportNoTo.trim());
+    if (debouncedReportFrom.trim()) params.set("reportFrom", debouncedReportFrom.trim());
+    if (debouncedReportTo.trim()) params.set("reportTo", debouncedReportTo.trim());
 
     return api<{
       rows: UnifiedRow[];
@@ -1555,6 +1572,7 @@ export default function MCDashboard() {
   }
 
   useEffect(() => {
+    if (!pinsHydrated || !correctionDiscardHydrated) return;
     let abort = false;
 
     /*
@@ -1665,23 +1683,25 @@ export default function MCDashboard() {
     microFormFilter,
     chemFormFilter,
     statusFilter,
-    searchClient,
-    searchReport,
-    search,
+    debouncedClient,
+    debouncedReport,
+    debouncedSearch,
     activeFilter,
     datePreset,
     fromDate,
     toDate,
     numberRangeType,
-    formNoFrom,
-    formNoTo,
-    reportNoFrom,
-    reportNoTo,
+    debouncedFormFrom,
+    debouncedFormTo,
+    debouncedReportFrom,
+    debouncedReportTo,
     sortBy,
     sortDir,
     refreshKey,
     pinnedIds,
     discardedCorrectionIds,
+    pinsHydrated,
+    correctionDiscardHydrated,
   ]);
 
   const statusOptions = useMemo(() => {
