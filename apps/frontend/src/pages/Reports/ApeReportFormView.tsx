@@ -7,6 +7,7 @@ import {
   getCorrections,
   type CorrectionItem,
 } from "../../utils/apeReportValidation";
+import { getReportQrUrl } from "../../utils/reportQrUrl";
 
 type Pane = "FORM" | "REPORT" | "ATTACHMENTS";
 
@@ -502,9 +503,7 @@ export default function ApeReportFormView(props: ApeReportFormViewProps) {
 
   const isBulk = isBulkPrint === true;
 
-  const qrValue = report?.id
-    ? JSON.stringify({ t: "report", id: report.id })
-    : "";
+  const qrValue = getReportQrUrl("APE", report?.id);
   const [qrSvg, setQrSvg] = useState<string>("");
 
   useEffect(() => {

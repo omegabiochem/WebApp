@@ -3,6 +3,7 @@ import * as QRCode from "qrcode";
 import pjla from "../../assets/pjla.png";
 import ilacmra from "../../assets/ilacmra.png";
 import { getCorrections } from "../../utils/apeReportValidation";
+import { getApeChildQrUrl } from "../../utils/reportQrUrl";
 
 type ReportStatus = string;
 
@@ -49,7 +50,7 @@ type ParentApeOrganism = {
   checked?: boolean;
 };
 
-const REPORT_TYPE = "APE_VALIDATION_REPORT";
+// const REPORT_TYPE = "APE_VALIDATION_REPORT";
 
 const APE_ORGANISM_OPTIONS = [
   { key: "E_COLI", reportLabel: "Escherichia Coli" },
@@ -282,15 +283,17 @@ export default function ApeValidationReportView(
   const parentReportId =
     report?.parentReportId || report?.workflowReportId || null;
 
-  const qrValue =
-    parentReportId || reportId
-      ? JSON.stringify({
-          t: "ape-validation-report",
-          id: parentReportId || reportId,
-          childId: reportId,
-          reportType: report?.reportType || REPORT_TYPE,
-        })
-      : "";
+  // const qrValue =
+  //   parentReportId || reportId
+  //     ? JSON.stringify({
+  //         t: "ape-validation-report",
+  //         id: parentReportId || reportId,
+  //         childId: reportId,
+  //         reportType: report?.reportType || REPORT_TYPE,
+  //       })
+  //     : "";
+
+  const qrValue = getApeChildQrUrl(parentReportId, "APE_VALIDATION_REPORT");
 
   useEffect(() => {
     let alive = true;
@@ -347,7 +350,7 @@ export default function ApeValidationReportView(
   const footerDateEffective = formatFooterDate(report?.footerDateEffective);
   const footerNote = `${footerRevNo} [Date Effective : ${footerDateEffective}]`;
 
-  const footerImages = [ 
+  const footerImages = [
     { src: pjla, alt: "FDA Registered" },
     { src: ilacmra, alt: "ISO Certified" },
   ];

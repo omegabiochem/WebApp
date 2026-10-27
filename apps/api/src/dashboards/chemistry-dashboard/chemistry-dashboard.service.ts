@@ -25,7 +25,8 @@ type ChemistryDashboardQuery = {
   perPage?: string;
   sort?: string;
 
-    pinnedIds?: string;
+  pinnedIds?: string;
+  discardedCorrectionIds?: string;
 };
 
 function toInt(value: any, fallback: number) {
@@ -83,24 +84,13 @@ function parsePinnedIds(value?: string): string[] {
     .filter(Boolean);
 }
 
-function withPinnedFilter(
-  where: Prisma.DashboardReportWhereInput,
-  pinnedIds: string[],
-  mode: 'PINNED' | 'UNPINNED',
-): Prisma.DashboardReportWhereInput {
-  if (!pinnedIds.length) return where;
-
-  return {
-    AND: [
-      where,
-      {
-        sourceId:
-          mode === 'PINNED'
-            ? { in: pinnedIds }
-            : { notIn: pinnedIds },
-      },
-    ],
-  };
+function isCorrectionPriorityStatus(status: string) {
+  return [
+    'CORRECTION_REQUESTED',
+    'UNDER_CORRECTION_UPDATE',
+    'CHANGE_REQUESTED',
+    'UNDER_CHANGE_UPDATE',
+  ].includes(String(status));
 }
 
 function mapFormFilter(form?: string): FormType | undefined {
@@ -143,11 +133,12 @@ export class ChemistryDashboardService {
 
     const page = toInt(query.page, 1);
     const perPage = Math.min(toInt(query.perPage, 10), 100);
-    const skip = (page - 1) * perPage;
-
 
     const pinnedIds = parsePinnedIds(query.pinnedIds);
-const pinOrder = new Map(pinnedIds.map((id, index) => [id, index]));
+    const discardedCorrectionIds = parsePinnedIds(query.discardedCorrectionIds);
+    const discardedCorrectionSet = new Set(discardedCorrectionIds);
+
+    const pinOrder = new Map(pinnedIds.map((id, index) => [id, index]));
 
     const form = query.form || 'ALL';
     const status = query.status || 'ALL';
@@ -178,39 +169,39 @@ const pinOrder = new Map(pinnedIds.map((id, index) => [id, index]));
 
     const and: Prisma.DashboardReportWhereInput[] = [];
 
- if (q) {
-  and.push({
-    OR: [
-      { searchableText: { contains: q, mode: 'insensitive' } },
+    if (q) {
+      and.push({
+        OR: [
+          { searchableText: { contains: q, mode: 'insensitive' } },
 
-      // direct dashboard columns
-      { typeOfTest: { contains: q, mode: 'insensitive' } },
-      { sampleType: { contains: q, mode: 'insensitive' } },
-      { formulaNo: { contains: q, mode: 'insensitive' } },
-      { description: { contains: q, mode: 'insensitive' } },
-      { lotNo: { contains: q, mode: 'insensitive' } },
-      { client: { contains: q, mode: 'insensitive' } },
-      { clientCode: { contains: q, mode: 'insensitive' } },
-      { formNumber: { contains: q, mode: 'insensitive' } },
-      { reportNumber: { contains: q, mode: 'insensitive' } },
+          // direct dashboard columns
+          { typeOfTest: { contains: q, mode: 'insensitive' } },
+          { sampleType: { contains: q, mode: 'insensitive' } },
+          { formulaNo: { contains: q, mode: 'insensitive' } },
+          { description: { contains: q, mode: 'insensitive' } },
+          { lotNo: { contains: q, mode: 'insensitive' } },
+          { client: { contains: q, mode: 'insensitive' } },
+          { clientCode: { contains: q, mode: 'insensitive' } },
+          { formNumber: { contains: q, mode: 'insensitive' } },
+          { reportNumber: { contains: q, mode: 'insensitive' } },
 
-      // chemistry fields
-      { sampleDescription: { contains: q, mode: 'insensitive' } },
-      { lotBatchNo: { contains: q, mode: 'insensitive' } },
-      { formulaId: { contains: q, mode: 'insensitive' } },
-      { sampleSize: { contains: q, mode: 'insensitive' } },
-      { numberOfActives: { contains: q, mode: 'insensitive' } },
-      { selectedActivesText: { contains: q, mode: 'insensitive' } },
+          // chemistry fields
+          { sampleDescription: { contains: q, mode: 'insensitive' } },
+          { lotBatchNo: { contains: q, mode: 'insensitive' } },
+          { formulaId: { contains: q, mode: 'insensitive' } },
+          { sampleSize: { contains: q, mode: 'insensitive' } },
+          { numberOfActives: { contains: q, mode: 'insensitive' } },
+          { selectedActivesText: { contains: q, mode: 'insensitive' } },
 
-      // extra searchable fields
-      { comments: { contains: q, mode: 'insensitive' } },
-      { idNo: { contains: q, mode: 'insensitive' } },
-      { testedBy: { contains: q, mode: 'insensitive' } },
-      { reviewedBy: { contains: q, mode: 'insensitive' } },
-      { status: { contains: q, mode: 'insensitive' } },
-    ],
-  });
-}
+          // extra searchable fields
+          { comments: { contains: q, mode: 'insensitive' } },
+          { idNo: { contains: q, mode: 'insensitive' } },
+          { testedBy: { contains: q, mode: 'insensitive' } },
+          { reviewedBy: { contains: q, mode: 'insensitive' } },
+          { status: { contains: q, mode: 'insensitive' } },
+        ],
+      });
+    }
 
     if (client) {
       and.push({
@@ -264,93 +255,10 @@ const pinOrder = new Map(pinnedIds.map((id, index) => [id, index]));
     const hasFormRange = !!query.formFrom || !!query.formTo;
     const hasReportRange = !!query.reportFrom || !!query.reportTo;
 
-   if (
-  !(rangeType === 'FORM' && hasFormRange) &&
-  !(rangeType === 'REPORT' && hasReportRange)
-) {
-  if (!pinnedIds.length) {
-    const [rows, total] = await Promise.all([
-      this.prisma.dashboardReport.findMany({
-        where,
-        orderBy: {
-          [dateField]: sort,
-        } as any,
-        skip,
-        take: perPage,
-      }),
-      this.prisma.dashboardReport.count({ where }),
-    ]);
-
-    return {
-      rows: rows.map(mapDashboardRow),
-      total,
-      page,
-      perPage,
-      totalPages: Math.max(1, Math.ceil(total / perPage)),
-    };
-  }
-
-  const pinnedWhere = withPinnedFilter(where, pinnedIds, 'PINNED');
-  const unpinnedWhere = withPinnedFilter(where, pinnedIds, 'UNPINNED');
-
-  const [pinnedRowsRaw, total] = await Promise.all([
-    this.prisma.dashboardReport.findMany({
-      where: pinnedWhere,
-      orderBy: {
-        [dateField]: sort,
-      } as any,
-    }),
-    this.prisma.dashboardReport.count({ where }),
-  ]);
-
-  const pinnedRows = pinnedRowsRaw.sort((a, b) => {
-    const ai = pinOrder.get(String(a.sourceId)) ?? Number.MAX_SAFE_INTEGER;
-    const bi = pinOrder.get(String(b.sourceId)) ?? Number.MAX_SAFE_INTEGER;
-    return ai - bi;
-  });
-
-  const pinnedCount = pinnedRows.length;
-
-  let rows: any[] = [];
-
-  if (skip < pinnedCount) {
-    const pinnedSlice = pinnedRows.slice(skip, skip + perPage);
-    const remaining = perPage - pinnedSlice.length;
-
-    let unpinnedSlice: any[] = [];
-
-    if (remaining > 0) {
-      unpinnedSlice = await this.prisma.dashboardReport.findMany({
-        where: unpinnedWhere,
-        orderBy: {
-          [dateField]: sort,
-        } as any,
-        skip: 0,
-        take: remaining,
-      });
-    }
-
-    rows = [...pinnedSlice, ...unpinnedSlice];
-  } else {
-    rows = await this.prisma.dashboardReport.findMany({
-      where: unpinnedWhere,
-      orderBy: {
-        [dateField]: sort,
-      } as any,
-      skip: skip - pinnedCount,
-      take: perPage,
-    });
-  }
-
-  return {
-    rows: rows.map(mapDashboardRow),
-    total,
-    page,
-    perPage,
-    totalPages: Math.max(1, Math.ceil(total / perPage)),
-  };
-}
-
+    /*
+     * Load all matching Chemistry/COA rows first.
+     * Correction and pin priority must be applied before pagination.
+     */
     const allRows = await this.prisma.dashboardReport.findMany({
       where,
       orderBy: {
@@ -358,50 +266,86 @@ const pinOrder = new Map(pinnedIds.map((id, index) => [id, index]));
       } as any,
     });
 
-    const filteredRows = allRows.filter((r) => {
-      if (rangeType === 'FORM') {
-        return isInRange(
-          extractSequence(r.formNumber),
-          query.formFrom,
-          query.formTo,
-        );
+    /*
+     * Apply optional form/report number range.
+     */
+    const filteredRows =
+      rangeType === 'FORM' && hasFormRange
+        ? allRows.filter((r) =>
+            isInRange(
+              extractSequence(r.formNumber),
+              query.formFrom,
+              query.formTo,
+            ),
+          )
+        : rangeType === 'REPORT' && hasReportRange
+          ? allRows.filter((r) =>
+              isInRange(
+                extractSequence(r.reportNumber),
+                query.reportFrom,
+                query.reportTo,
+              ),
+            )
+          : allRows;
+
+    /*
+     * Priority:
+     * 1. Active correction not dismissed by this user
+     * 2. Pinned reports
+     * 3. Normal reports
+     */
+    const correctionRows: typeof filteredRows = [];
+    const pinnedRows: typeof filteredRows = [];
+    const normalRows: typeof filteredRows = [];
+
+    for (const row of filteredRows) {
+      const sourceId = String(row.sourceId);
+
+      const correctionImportant =
+        isCorrectionPriorityStatus(String(row.status)) &&
+        !discardedCorrectionSet.has(sourceId);
+
+      if (correctionImportant) {
+        correctionRows.push(row);
+        continue;
       }
 
-      return isInRange(
-        extractSequence(r.reportNumber),
-        query.reportFrom,
-        query.reportTo,
-      );
+      if (pinnedIds.includes(sourceId)) {
+        pinnedRows.push(row);
+        continue;
+      }
+
+      normalRows.push(row);
+    }
+
+    /*
+     * Preserve explicit pin order.
+     */
+    pinnedRows.sort((a, b) => {
+      const ai = pinOrder.get(String(a.sourceId)) ?? Number.MAX_SAFE_INTEGER;
+      const bi = pinOrder.get(String(b.sourceId)) ?? Number.MAX_SAFE_INTEGER;
+
+      return ai - bi;
     });
 
-    const total = filteredRows.length;
+    const orderedRows = [...correctionRows, ...pinnedRows, ...normalRows];
+
+    /*
+     * Pagination last.
+     */
+    const total = orderedRows.length;
     const totalPages = Math.max(1, Math.ceil(total / perPage));
     const safePage = Math.min(page, totalPages);
     const safeSkip = (safePage - 1) * perPage;
 
-const orderedRows = pinnedIds.length
-  ? [
-      ...filteredRows
-        .filter((r) => pinnedIds.includes(String(r.sourceId)))
-        .sort((a, b) => {
-          const ai =
-            pinOrder.get(String(a.sourceId)) ?? Number.MAX_SAFE_INTEGER;
-          const bi =
-            pinOrder.get(String(b.sourceId)) ?? Number.MAX_SAFE_INTEGER;
-          return ai - bi;
-        }),
-      ...filteredRows.filter((r) => !pinnedIds.includes(String(r.sourceId))),
-    ]
-  : filteredRows;
-
-return {
-  rows: orderedRows
-    .slice(safeSkip, safeSkip + perPage)
-    .map(mapDashboardRow),
-  total,
-  page: safePage,
-  perPage,
-  totalPages,
-};
+    return {
+      rows: orderedRows
+        .slice(safeSkip, safeSkip + perPage)
+        .map(mapDashboardRow),
+      total,
+      page: safePage,
+      perPage,
+      totalPages,
+    };
   }
 }

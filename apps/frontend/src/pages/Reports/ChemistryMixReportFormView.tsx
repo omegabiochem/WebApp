@@ -8,6 +8,7 @@ import * as QRCode from "qrcode";
 import { api, API_URL, getToken } from "../../lib/api";
 import pjla from "../../assets/pjla.png";
 import ilacmra from "../../assets/ilacmra.png";
+import { getReportQrUrl } from "../../utils/reportQrUrl";
 
 type Pane = "FORM" | "REPORT" | "ATTACHMENTS";
 
@@ -556,13 +557,7 @@ export default function ChemistryMixReportFormView(
 
   const isBulk = isBulkPrint === true;
 
-  const qrValue = report?.id
-    ? JSON.stringify({
-        t: "chemistry",
-        id: report.id, // ← the only thing the watcher needs
-        // url: `${appBase}/reports/micro-mix/${report.id}`, // nice-to-have for humans
-      })
-    : "";
+ const qrValue = getReportQrUrl("CHEMISTRY_MIX", report?.id);
 
   // const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [qrSvg, setQrSvg] = useState<string>("");

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
+import { takeReportLoginRedirect } from "../../utils/reportLoginRedirect";
 
 type Role =
   | "SYSTEMADMIN"
@@ -289,8 +290,16 @@ export default function Verify2FA() {
         return;
       }
 
-      setBanner({ type: "success", text: "Verified. Signing you in…" });
-      nav(roleHomePath[res.user.role] ?? "/home", { replace: true });
+      setBanner({
+        type: "success",
+        text: "Verified. Signing you in…",
+      });
+
+      const destination = takeReportLoginRedirect(
+        roleHomePath[res.user.role] ?? "/home",
+      );
+
+      nav(destination, { replace: true });
     } catch (err: any) {
       const codeErr = err?.body?.code;
 

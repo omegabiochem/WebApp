@@ -11,6 +11,7 @@ import {
   type CorrectionItem,
 } from "../../utils/COAReportValidation";
 import { type COAReportStatus } from "../../utils/COAReportFormWorkflow";
+import { getReportQrUrl } from "../../utils/reportQrUrl";
 
 type Pane = "FORM" | "REPORT" | "ATTACHMENTS";
 
@@ -455,7 +456,7 @@ export default function COAReportFormView(props: COAReportFormViewProps) {
   }, [onClose, isBulkPrint]);
 
   // -------- QR ----------
-  const qrValue = report?.id ? JSON.stringify({ t: "coa", id: report.id }) : "";
+const qrValue = getReportQrUrl("COA", report?.id);
   const [qrSvg, setQrSvg] = useState<string>("");
 
   useEffect(() => {

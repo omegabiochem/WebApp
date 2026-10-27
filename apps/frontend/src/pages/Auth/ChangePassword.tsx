@@ -5,12 +5,14 @@ import { zodResolver } from "@hookform/resolvers/zod"; // <- optional but recomm
 import { changeUserPassword } from "../../services/usersService";
 import { useAuth } from "../../context/AuthContext";
 import { Navigate, useNavigate } from "react-router-dom";
+import { takeReportLoginRedirect } from "../../utils/reportLoginRedirect";
 
 type Role =
   | "SYSTEMADMIN"
   | "ADMIN"
   | "FRONTDESK"
   | "MICRO"
+  | "MC"
   | "CHEMISTRY"
   | "QA"
   | "CLIENT";
@@ -20,6 +22,7 @@ const roleHomePath: Record<Role, string> = {
   CLIENT: "/clientDashboard",
   SYSTEMADMIN: "/systemAdminDashboard",
   MICRO: "/microDashboard",
+  MC: "/mcDashboard",
   CHEMISTRY: "/chemistryDashboard",
   QA: "/qaDashboard",
   FRONTDESK: "/frontdeskDashboard",
@@ -49,12 +52,6 @@ export default function ChangePassword() {
     confirm: false,
   });
 
-  if (!user) return <Navigate to="/login" replace />;
-
-  if (!user.mustChangePassword) {
-    return <Navigate to={roleHomePath[user.role as Role] ?? "/home"} replace />;
-  }
-
   const {
     register,
     handleSubmit,
@@ -65,6 +62,12 @@ export default function ChangePassword() {
     resolver: zodResolver(schema), // <- if you don't want zod, remove this line
     mode: "onSubmit",
   });
+
+  if (!user) return <Navigate to="/login" replace />;
+
+  if (!user.mustChangePassword) {
+    return <Navigate to={roleHomePath[user.role as Role] ?? "/home"} replace />;
+  }
 
   // const onSubmit = async (data: FormData) => {
   //   await changeUserPassword({
@@ -104,21 +107,29 @@ export default function ChangePassword() {
         newPassword: data.newPassword,
       });
 
+      // Refresh authentication context with the updated credentials.
       if (res?.accessToken && res?.user) {
         login(res.accessToken, res.user);
       }
 
       reset();
-      alert("Password changed. You can continue.");
 
-      nav(roleHomePath[(res?.user?.role ?? user.role) as Role] ?? "/home", {
-        replace: true,
-      });
+      const fallback =
+        roleHomePath[(res?.user?.role ?? user.role) as Role] ?? "/home";
+
+      // Return to the originally scanned report, if one was saved.
+      const destination = takeReportLoginRedirect(fallback);
+
+      nav(destination, { replace: true });
     } catch (err: any) {
-      const msg =
+      const rawMessage =
         err?.body?.message || err?.message || "Unable to change password.";
 
-      // 👉 Show ONLY under current password field
+      const msg =
+        typeof rawMessage === "string"
+          ? rawMessage
+          : JSON.stringify(rawMessage);
+
       if (msg.toLowerCase().includes("current password")) {
         setError("currentPassword", {
           type: "server",
@@ -127,7 +138,6 @@ export default function ChangePassword() {
         return;
       }
 
-      // fallback (optional)
       setError("currentPassword", {
         type: "server",
         message: msg,

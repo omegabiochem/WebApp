@@ -2,9 +2,13 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { api } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
+import {
+  saveReportLoginRedirect,
+  takeReportLoginRedirect,
+} from "../../utils/reportLoginRedirect";
 
 type Role =
   | "SYSTEMADMIN"
@@ -94,6 +98,7 @@ export default function Login() {
 
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [banner, setBanner] = useState<{
     type: "success" | "error";
@@ -109,6 +114,17 @@ export default function Login() {
   const onSubmit = async (data: FormData) => {
     if (submitLockRef.current) return;
     submitLockRef.current = true;
+
+    const from = (
+      location.state as {
+        from?: {
+          pathname?: string;
+          search?: string;
+        };
+      } | null
+    )?.from;
+
+    saveReportLoginRedirect(from);
 
     setBanner(null);
 
@@ -182,8 +198,17 @@ export default function Login() {
       }
 
       login(res.accessToken, res.user);
-      setBanner({ type: "success", text: "Login successful!" });
-      navigate(roleHomePath[res.user.role] ?? "/home", { replace: true });
+
+      setBanner({
+        type: "success",
+        text: "Login successful!",
+      });
+
+      const destination = takeReportLoginRedirect(
+        roleHomePath[res.user.role] ?? "/home",
+      );
+
+      navigate(destination, { replace: true });
     } catch (err: any) {
       // ✅ IP allowlist block (403)
       if (err?.status === 403) {

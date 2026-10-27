@@ -451,6 +451,15 @@ const DEFAULT_MICRO_FILTERS = {
   toDate: "",
 };
 
+function isCorrectionPriorityStatus(status: string) {
+  return [
+    "CORRECTION_REQUESTED",
+    "UNDER_CORRECTION_UPDATE",
+    "CHANGE_REQUESTED",
+    "UNDER_CHANGE_UPDATE",
+  ].includes(String(status));
+}
+
 // -----------------------------
 // Component
 // -----------------------------
@@ -605,6 +614,21 @@ export default function MicroDashboard() {
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
 
+  const CORRECTION_DISCARD_STORAGE_KEY = `microDashboardCorrectionDiscarded:user:${userKey}`;
+
+  const [discardedCorrectionIds, setDiscardedCorrectionIds] = useState<
+    string[]
+  >(() => {
+    try {
+      const raw = localStorage.getItem(CORRECTION_DISCARD_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+
   const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
   const prevPositions = React.useRef<Record<string, DOMRect>>({});
   const hydratedFromUrlRef = React.useRef(false);
@@ -613,6 +637,17 @@ export default function MicroDashboard() {
   const statusChipRefs = React.useRef<Record<string, HTMLButtonElement | null>>(
     {},
   );
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        CORRECTION_DISCARD_STORAGE_KEY,
+        JSON.stringify(discardedCorrectionIds),
+      );
+    } catch {
+      // ignore
+    }
+  }, [CORRECTION_DISCARD_STORAGE_KEY, discardedCorrectionIds]);
 
   useEffect(() => {
     try {
@@ -673,6 +708,22 @@ export default function MicroDashboard() {
       prev.includes(id) ? prev.filter((x) => x !== id) : [id, ...prev],
     );
   };
+
+  useEffect(() => {
+    setDiscardedCorrectionIds((prev) => {
+      const next = prev.filter((id) => {
+        const report = reports.find((r) => r.id === id);
+
+        if (!report) {
+          return true;
+        }
+
+        return isCorrectionPriorityStatus(String(report.status));
+      });
+
+      return next.length === prev.length ? prev : next;
+    });
+  }, [reports]);
 
   useEffect(() => {
     if (!colOpen) return;
@@ -1006,6 +1057,10 @@ export default function MicroDashboard() {
       params.set("pinnedIds", pinnedIds.join(","));
     }
 
+    if (discardedCorrectionIds.length) {
+      params.set("discardedCorrectionIds", discardedCorrectionIds.join(","));
+    }
+
     if (searchClient.trim()) params.set("client", searchClient.trim());
     if (searchReport.trim()) params.set("report", searchReport.trim());
     if (searchText.trim()) params.set("q", searchText.trim());
@@ -1133,6 +1188,7 @@ export default function MicroDashboard() {
     toDate,
     refreshKey,
     pinnedIds,
+    discardedCorrectionIds,
   ]);
 
   function toDateOnlyLocal(d: Date) {
@@ -1260,18 +1316,47 @@ export default function MicroDashboard() {
   }, [statusOptions, statusFilter]);
 
   // pagination
-  const displayRows = useMemo(() => {
-    return [...reports].sort((a, b) => {
-      const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
-      const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+  // const displayRows = useMemo(() => {
+  //   return [...reports].sort((a, b) => {
+  //     const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
+  //     const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
 
-      if (aPinned !== bPinned) {
-        return bPinned - aPinned;
+  //     if (aPinned !== bPinned) {
+  //       return bPinned - aPinned;
+  //     }
+
+  //     return 0;
+  //   });
+  // }, [reports, pinnedIds]);
+
+  const displayRows = useMemo(() => {
+    const correctionRows: Report[] = [];
+    const pinnedRows: Report[] = [];
+    const normalRows: Report[] = [];
+
+    for (const report of reports) {
+      const hasCorrection =
+        isCorrectionPriorityStatus(report.status) &&
+        !discardedCorrectionIds.includes(report.id);
+
+      if (hasCorrection) {
+        // Priority 1
+        correctionRows.push(report);
+        continue;
       }
 
-      return 0;
-    });
-  }, [reports, pinnedIds]);
+      if (pinnedIds.includes(report.id)) {
+        // Priority 2
+        pinnedRows.push(report);
+        continue;
+      }
+
+      // Priority 3
+      normalRows.push(report);
+    }
+
+    return [...correctionRows, ...pinnedRows, ...normalRows];
+  }, [reports, pinnedIds, discardedCorrectionIds]);
 
   const total = serverTotal;
   const totalPages = serverTotalPages;
@@ -1780,101 +1865,93 @@ export default function MicroDashboard() {
     return r;
   }
 
+  async function startFinal(r: Report) {
+    const reason =
+      window.prompt(
+        "Reason for change (21 CFR Part 11):",
+        "Start final testing",
+      ) || "";
 
-async function startFinal(r: Report) {
-  const reason =
-    window.prompt(
-      "Reason for change (21 CFR Part 11):",
-      "Start final testing",
-    ) || "";
+    if (!reason.trim()) {
+      toast.error("Reason is required.");
+      return null;
+    }
 
-  if (!reason.trim()) {
-    toast.error("Reason is required.");
-    return null;
-  }
+    const nextStatus = "UNDER_FINAL_TESTING_REVIEW";
 
-  const nextStatus = "UNDER_FINAL_TESTING_REVIEW";
+    /*
+     * 1. Change workflow status.
+     * This may increment the report version in the backend.
+     */
+    await api(`/reports/${r.id}/change-status`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: nextStatus,
+        reason,
+      }),
+    });
 
-  /*
-   * 1. Change workflow status.
-   * This may increment the report version in the backend.
-   */
-  await api(`/reports/${r.id}/change-status`, {
-    method: "PATCH",
-    body: JSON.stringify({
-      status: nextStatus,
-      reason,
-    }),
-  });
+    /*
+     * 2. IMPORTANT:
+     * Reload the authoritative report after Start Final.
+     *
+     * Do NOT continue using `r`, because `r.version`
+     * belongs to the report BEFORE the status change.
+     */
+    const latest = await api<Report>(`/reports/${r.id}`, {
+      method: "GET",
+    });
 
-  /*
-   * 2. IMPORTANT:
-   * Reload the authoritative report after Start Final.
-   *
-   * Do NOT continue using `r`, because `r.version`
-   * belongs to the report BEFORE the status change.
-   */
-  const latest = await api<Report>(`/reports/${r.id}`, {
-    method: "GET",
-  });
+    const updated: Report = {
+      ...r,
+      ...latest,
 
-  const updated: Report = {
-    ...r,
-    ...latest,
+      id: latest.id ?? r.id,
 
-    id: latest.id ?? r.id,
+      status: latest.status ?? nextStatus,
 
-    status:
-      latest.status ??
-      nextStatus,
+      version: typeof latest.version === "number" ? latest.version : r.version,
 
-    version:
-      typeof latest.version === "number"
-        ? latest.version
-        : r.version,
-
-    reportNumber:
-      latest.reportNumber ??
-      r.reportNumber,
-  };
-
-  /*
-   * 3. Update dashboard copy with FULL latest report,
-   * not only status.
-   */
-  setReports((prev) =>
-    prev.map((x) =>
-      x.id === r.id
-        ? {
-            ...x,
-            ...updated,
-          }
-        : x,
-    ),
-  );
-
-  /*
-   * 4. Update selected cache too.
-   */
-  setSelectedReportsById((prev) => {
-    if (!prev[r.id]) return prev;
-
-    return {
-      ...prev,
-      [r.id]: {
-        ...prev[r.id],
-        ...updated,
-      },
+      reportNumber: latest.reportNumber ?? r.reportNumber,
     };
-  });
 
-  /*
-   * 5. Open editor with CURRENT database version.
-   */
-  openUpdateTarget(updated);
+    /*
+     * 3. Update dashboard copy with FULL latest report,
+     * not only status.
+     */
+    setReports((prev) =>
+      prev.map((x) =>
+        x.id === r.id
+          ? {
+              ...x,
+              ...updated,
+            }
+          : x,
+      ),
+    );
 
-  return updated;
-}
+    /*
+     * 4. Update selected cache too.
+     */
+    setSelectedReportsById((prev) => {
+      if (!prev[r.id]) return prev;
+
+      return {
+        ...prev,
+        [r.id]: {
+          ...prev[r.id],
+          ...updated,
+        },
+      };
+    });
+
+    /*
+     * 5. Open editor with CURRENT database version.
+     */
+    openUpdateTarget(updated);
+
+    return updated;
+  }
 
   // ✅ put this inside MicroDashboard(), before return
   const modalShowStartFinal =
@@ -3153,6 +3230,22 @@ async function startFinal(r: Report) {
     return renderApeReportTabs(report, true);
   }
 
+  function discardCorrectionPriority(reportId: string) {
+    const ok = window.confirm(
+      "Remove this correction from the priority section?\n\n" +
+        "The correction will NOT be resolved or deleted. " +
+        "The report will remain on your dashboard.",
+    );
+
+    if (!ok) return;
+
+    setDiscardedCorrectionIds((prev) => {
+      if (prev.includes(reportId)) return prev;
+
+      return [...prev, reportId];
+    });
+  }
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3866,6 +3959,10 @@ async function startFinal(r: Report) {
                   pageRows.map((r) => {
                     const rowBusy = updatingId === r.id;
 
+                    const isCorrectionImportant =
+                      isCorrectionPriorityStatus(r.status) &&
+                      !discardedCorrectionIds.includes(r.id);
+
                     const showStartFinal =
                       r.formType !== "STERILITY" &&
                       (r.status === "UNDER_CLIENT_PRELIMINARY_REVIEW" ||
@@ -3888,7 +3985,11 @@ async function startFinal(r: Report) {
                         }}
                         className={classNames(
                           "border-t hover:bg-slate-50",
-                          isPinned(r.id) && "bg-blue-50/40",
+                          isCorrectionImportant
+                            ? "bg-red-50/70"
+                            : isPinned(r.id)
+                              ? "bg-blue-50/40"
+                              : "",
                         )}
                       >
                         <td className="pl-2 pr-1 py-3 text-center">
@@ -3936,14 +4037,24 @@ async function startFinal(r: Report) {
                         ))}
 
                         <td className="px-4 py-3">
-                          <span
-                            className={classNames(
-                              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
-                              badgeClass,
+                          <div className="flex items-center gap-2">
+                            {/* Existing Status */}
+                            <span
+                              className={classNames(
+                                "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
+                                badgeClass,
+                              )}
+                            >
+                              {niceStatus(String(r.status))}
+                            </span>
+
+                            {/* Correction priority */}
+                            {isCorrectionImportant && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-700 ring-1 ring-red-200">
+                                ⚠ Correction
+                              </span>
                             )}
-                          >
-                            {niceStatus(String(r.status))}
-                          </span>
+                          </div>
                         </td>
 
                         <td className="sticky right-0 z-20 bg-white px-4 py-3 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
@@ -3981,7 +4092,9 @@ async function startFinal(r: Report) {
                                 className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
                                 onClick={async () => {
                                   if (rowBusy) return;
+
                                   setUpdatingId(r.id);
+
                                   try {
                                     await startFinal(r);
                                   } catch (e: any) {
@@ -4003,12 +4116,15 @@ async function startFinal(r: Report) {
                                   className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
                                   onClick={async () => {
                                     if (rowBusy) return;
+
                                     setUpdatingId(r.id);
+
                                     try {
                                       const updated = await autoAdvanceAndOpen(
                                         r,
                                         "micro",
                                       );
+
                                       openUpdateTarget(updated);
                                     } catch (e: any) {
                                       toast.error(
@@ -4020,9 +4136,38 @@ async function startFinal(r: Report) {
                                   }}
                                 >
                                   {rowBusy ? <Spinner /> : null}
+
                                   {rowBusy ? "Updating..." : "Update"}
                                 </button>
                               )
+                            )}
+
+                            {/* Dismiss correction priority */}
+                            {isCorrectionImportant && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  discardCorrectionPriority(r.id);
+                                }}
+                                className="
+      inline-flex h-7 w-7
+      items-center justify-center
+      rounded-full
+      border border-slate-200
+      bg-white
+      text-sm font-bold
+      text-slate-400
+      transition
+      hover:border-red-200
+      hover:bg-red-50
+      hover:text-red-600
+    "
+                                title="Dismiss correction priority"
+                                aria-label="Dismiss correction priority"
+                              >
+                                ×
+                              </button>
                             )}
                           </div>
                         </td>
@@ -4079,7 +4224,7 @@ async function startFinal(r: Report) {
                 onChange={(e) => setPerPage(Number(e.target.value))}
                 className="w-24 rounded-lg border bg-white px-3 py-2 text-sm ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-blue-500"
               >
-                {[10, 20, 50].map((n) => (
+                {[10, 20, 50, 100].map((n) => (
                   <option key={n} value={n}>
                     {n}
                   </option>
@@ -4247,7 +4392,7 @@ async function startFinal(r: Report) {
                         try {
                           const r = selectedReport;
                           setSelectedReport(null);
-                       await startFinal(r);
+                          await startFinal(r);
                         } catch (e: any) {
                           toast.error(e?.message || "Failed to start final");
                         } finally {

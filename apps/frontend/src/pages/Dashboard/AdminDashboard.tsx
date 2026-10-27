@@ -774,7 +774,7 @@ export default function AdminDashboard() {
     (initialFilters as any).sortOrder || "desc",
   );
 
-  const allowedPP = [10, 20, 50] as const;
+  const allowedPP = [10, 20, 50, 100] as const;
   const [perPage, setPerPage] = useState<(typeof allowedPP)[number]>(
     (allowedPP as readonly number[]).includes(initialFilters.perPage)
       ? (initialFilters.perPage as any)
@@ -860,6 +860,17 @@ export default function AdminDashboard() {
 
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pinsHydrated, setPinsHydrated] = useState(false);
+
+  const CORRECTION_DISCARD_STORAGE_KEY = userKey
+    ? `adminOnlyDashboardCorrectionDiscarded:user:${userKey}`
+    : null;
+
+  const [discardedCorrectionIds, setDiscardedCorrectionIds] = useState<
+    string[]
+  >([]);
+
+  const [correctionDiscardHydrated, setCorrectionDiscardHydrated] =
+    useState(false);
 
   const rowRefs = React.useRef<Record<string, HTMLTableRowElement | null>>({});
   const prevPositions = React.useRef<Record<string, DOMRect>>({});
@@ -1285,6 +1296,10 @@ export default function AdminDashboard() {
       params.set("pinnedIds", pinnedIds.join(","));
     }
 
+    if (discardedCorrectionIds.length) {
+      params.set("discardedCorrectionIds", discardedCorrectionIds.join(","));
+    }
+
     if (searchClient.trim()) params.set("client", searchClient.trim());
     if (searchReport.trim()) params.set("report", searchReport.trim());
     if (searchText.trim()) params.set("q", searchText.trim());
@@ -1435,6 +1450,7 @@ export default function AdminDashboard() {
     sortOrder,
     refreshKey,
     pinnedIds,
+    discardedCorrectionIds,
   ]);
 
   // ✅ Reset invalid status when switching formFilter
@@ -1452,17 +1468,30 @@ export default function AdminDashboard() {
   }, [formFilter, statusFilter]);
 
   const displayRows = useMemo(() => {
-    return [...reports].sort((a, b) => {
-      const aPinned = pinnedIds.includes(a.id) ? 1 : 0;
-      const bPinned = pinnedIds.includes(b.id) ? 1 : 0;
+    const correctionRows: Report[] = [];
+    const pinnedRows: Report[] = [];
+    const normalRows: Report[] = [];
 
-      if (aPinned !== bPinned) {
-        return bPinned - aPinned;
+    for (const report of reports) {
+      const hasCorrection =
+        isCorrectionPriorityStatus(String(report.status)) &&
+        !discardedCorrectionIds.includes(report.id);
+
+      if (hasCorrection) {
+        correctionRows.push(report);
+        continue;
       }
 
-      return 0;
-    });
-  }, [reports, pinnedIds]);
+      if (pinnedIds.includes(report.id)) {
+        pinnedRows.push(report);
+        continue;
+      }
+
+      normalRows.push(report);
+    }
+
+    return [...correctionRows, ...pinnedRows, ...normalRows];
+  }, [reports, pinnedIds, discardedCorrectionIds]);
 
   const total = serverTotal;
   const totalPages = serverTotalPages;
@@ -1649,8 +1678,8 @@ export default function AdminDashboard() {
     setReportNoFrom(next.reportNoFrom);
     setReportNoTo(next.reportNoTo);
     setPerPage(
-      ([10, 20, 50] as const).includes(next.perPage as any)
-        ? (next.perPage as 10 | 20 | 50)
+      ([10, 20, 50, 100] as const).includes(next.perPage as any)
+        ? (next.perPage as 10 | 20 | 50 | 100)
         : 10,
     );
     setPage(next.page);
@@ -2565,8 +2594,8 @@ export default function AdminDashboard() {
       (isInternalClientDraft(clicked) &&
         (clicked.formType === "MICRO_MIX" ||
           clicked.formType === "MICRO_MIX_WATER" ||
-          clicked.formType === "STERILITY") ||
-      clicked.formType === "APE")
+          clicked.formType === "STERILITY")) ||
+      clicked.formType === "APE"
     ) {
       const slug = formTypeToSlug[clicked.formType] || "micro-mix";
 
@@ -2698,6 +2727,59 @@ export default function AdminDashboard() {
   }, [COL_STORAGE_KEY, colsHydrated, selectedCols]);
 
   useEffect(() => {
+    if (!CORRECTION_DISCARD_STORAGE_KEY) {
+      setCorrectionDiscardHydrated(true);
+      return;
+    }
+
+    try {
+      const raw = localStorage.getItem(CORRECTION_DISCARD_STORAGE_KEY);
+
+      if (raw) {
+        const parsed = JSON.parse(raw);
+
+        if (Array.isArray(parsed)) {
+          setDiscardedCorrectionIds(parsed);
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setCorrectionDiscardHydrated(true);
+    }
+  }, [CORRECTION_DISCARD_STORAGE_KEY]);
+
+  useEffect(() => {
+    if (!CORRECTION_DISCARD_STORAGE_KEY) return;
+    if (!correctionDiscardHydrated) return;
+
+    localStorage.setItem(
+      CORRECTION_DISCARD_STORAGE_KEY,
+      JSON.stringify(discardedCorrectionIds),
+    );
+  }, [
+    CORRECTION_DISCARD_STORAGE_KEY,
+    correctionDiscardHydrated,
+    discardedCorrectionIds,
+  ]);
+
+  useEffect(() => {
+    setDiscardedCorrectionIds((prev) => {
+      const next = prev.filter((id) => {
+        const report = reports.find((r) => r.id === id);
+
+        if (!report) {
+          return true;
+        }
+
+        return isCorrectionPriorityStatus(String(report.status));
+      });
+
+      return next.length === prev.length ? prev : next;
+    });
+  }, [reports]);
+
+  useEffect(() => {
     if (!PIN_STORAGE_KEY) {
       setPinsHydrated(true);
       return;
@@ -2731,6 +2813,22 @@ export default function AdminDashboard() {
       prev.includes(id) ? prev.filter((x) => x !== id) : [id, ...prev],
     );
   };
+
+  function discardCorrectionPriority(reportId: string) {
+    const ok = window.confirm(
+      "Remove this correction from priority?\n\n" +
+        "The correction will NOT be resolved or deleted. " +
+        "The report will remain on your dashboard.",
+    );
+
+    if (!ok) return;
+
+    setDiscardedCorrectionIds((prev) => {
+      if (prev.includes(reportId)) return prev;
+
+      return [...prev, reportId];
+    });
+  }
 
   useEffect(() => {
     if (!colOpen) return;
@@ -3703,7 +3801,7 @@ export default function AdminDashboard() {
     };
   }, [selectedReport?.id, selectedReport?.formType]);
 
-  if (!colsHydrated || !pinsHydrated) {
+  if (!colsHydrated || !pinsHydrated || !correctionDiscardHydrated) {
     return <div className="p-6 text-slate-500">Loading dashboard…</div>;
   }
 
@@ -3801,6 +3899,16 @@ export default function AdminDashboard() {
       s.includes("UNDER_DRAFT_REVIEW")
     );
   }
+
+  function isCorrectionPriorityStatus(status: string) {
+    return [
+      "CORRECTION_REQUESTED",
+      "UNDER_CORRECTION_UPDATE",
+      "CHANGE_REQUESTED",
+      "UNDER_CHANGE_UPDATE",
+    ].includes(String(status));
+  }
+
   const selectedHasCorrectionLockedStatus = selectedReportObjects.some((r) =>
     isCorrectionFlowStatus(String(r.status)),
   );
@@ -4535,6 +4643,10 @@ export default function AdminDashboard() {
                       r.formType === "CHEMISTRY_MIX" || r.formType === "COA";
                     const rowBusy = updatingId === r.id;
 
+                    const isCorrectionImportant =
+                      isCorrectionPriorityStatus(String(r.status)) &&
+                      !discardedCorrectionIds.includes(r.id);
+
                     return (
                       <tr
                         key={r.id}
@@ -4543,7 +4655,11 @@ export default function AdminDashboard() {
                         }}
                         className={classNames(
                           "border-t hover:bg-slate-50",
-                          isPinned(r.id) && "bg-blue-50/40",
+                          isCorrectionImportant
+                            ? "bg-red-50/70"
+                            : isPinned(r.id)
+                              ? "bg-blue-50/40"
+                              : "",
                         )}
                       >
                         <td className="pl-2 pr-1 py-3 text-center">
@@ -4594,14 +4710,22 @@ export default function AdminDashboard() {
                         ))}
 
                         <td className="px-4 py-3">
-                          <span
-                            className={classNames(
-                              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
-                              badgeClasses(r),
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={classNames(
+                                "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1",
+                                badgeClasses(r),
+                              )}
+                            >
+                              {niceStatus(String(r.status))}
+                            </span>
+
+                            {isCorrectionImportant && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-700 ring-1 ring-red-200 whitespace-nowrap">
+                                ⚠ Correction
+                              </span>
                             )}
-                          >
-                            {niceStatus(String(r.status))}
-                          </span>
+                          </div>
                         </td>
 
                         <td className="sticky right-0 z-20 bg-white px-4 py-3 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
@@ -4775,6 +4899,33 @@ export default function AdminDashboard() {
                             >
                               Change Status
                             </button>
+
+                            {isCorrectionImportant && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  discardCorrectionPriority(r.id);
+                                }}
+                                className="
+                                  inline-flex h-7 w-7
+                                  items-center justify-center
+                                  rounded-full
+                                  border border-slate-200
+                                  bg-white
+                                  text-sm font-bold
+                                  text-slate-400
+                                  transition
+                                  hover:border-red-200
+                                  hover:bg-red-50
+                                  hover:text-red-600
+                                "
+                                title="Dismiss correction priority"
+                                aria-label="Dismiss correction priority"
+                              >
+                                ×
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -4816,7 +4967,7 @@ export default function AdminDashboard() {
                 }
                 className="rounded-lg border bg-white px-3 py-1.5 text-sm ring-1 ring-inset ring-slate-200"
               >
-                {[10, 20, 50].map((n) => (
+                {[10, 20, 50, 100].map((n) => (
                   <option key={n} value={n}>
                     {n}
                   </option>

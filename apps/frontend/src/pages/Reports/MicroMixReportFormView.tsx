@@ -7,6 +7,7 @@ import {
   getCorrections,
   type CorrectionItem,
 } from "../../utils/microMixReportValidation";
+import { getReportQrUrl } from "../../utils/reportQrUrl";
 
 type Pane = "FORM" | "REPORT" | "ATTACHMENTS";
 
@@ -554,13 +555,15 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
   //     ? window.location.origin
   //     : "http://localhost:5173";
 
-  const qrValue = report?.id
-    ? JSON.stringify({
-        t: "report",
-        id: report.id, // ← the only thing the watcher needs
-        // url: `${appBase}/reports/micro-mix/${report.id}`, // nice-to-have for humans
-      })
-    : "";
+  // const qrValue = report?.id
+  //   ? JSON.stringify({
+  //       t: "report",
+  //       id: report.id, // ← the only thing the watcher needs
+  //       // url: `${appBase}/reports/micro-mix/${report.id}`, // nice-to-have for humans
+  //     })
+  //   : "";
+
+const qrValue = getReportQrUrl("MICRO_MIX", report?.id);
 
   // const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [qrSvg, setQrSvg] = useState<string>("");
@@ -854,7 +857,6 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
 
               {/* Center: Title */}
               <div className="text-center text-[18px] font-bold underline">
-
                 {isSubmissionFormPane
                   ? "MICRO SUBMISSION FORM"
                   : "MICRO REPORT"}

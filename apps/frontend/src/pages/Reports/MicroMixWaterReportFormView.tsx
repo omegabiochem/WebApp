@@ -7,6 +7,7 @@ import {
   getCorrections,
   type CorrectionItem,
 } from "../../utils/microMixWaterReportValidation";
+import { getReportQrUrl } from "../../utils/reportQrUrl";
 
 type Pane = "FORM" | "REPORT" | "ATTACHMENTS";
 
@@ -565,13 +566,15 @@ export default function MicroMixWaterReportFormView(
   //       ? window.location.origin
   //       : "http://localhost:5173";
 
-  const qrValue = report?.id
-    ? JSON.stringify({
-        t: "report",
-        id: report.id, // ← the only thing the watcher needs
-        // url: `${appBase}/reports/micro-mix/${report.id}`, // nice-to-have for humans
-      })
-    : "";
+  // const qrValue = report?.id
+  //   ? JSON.stringify({
+  //       t: "report",
+  //       id: report.id, // ← the only thing the watcher needs
+  //       // url: `${appBase}/reports/micro-mix/${report.id}`, // nice-to-have for humans
+  //     })
+  //   : "";
+
+const qrValue = getReportQrUrl("MICRO_MIX_WATER", report?.id);
 
   const [qrSvg, setQrSvg] = useState<string>("");
 
