@@ -746,6 +746,14 @@ export default function SystemAdminDashboard() {
   const [searchClient, setSearchClient] = useState(initialFilters.searchClient);
   const [searchReport, setSearchReport] = useState(initialFilters.searchReport);
   const [searchText, setSearchText] = useState(initialFilters.searchText);
+  // Delay network filtering until the user pauses typing.
+  const [debouncedSearchText, setDebouncedSearchText] = useState(searchText);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearchText(searchText.trim());
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchText]);
 
   const [datePreset, setDatePreset] = useState<DatePreset>(
     initialFilters.datePreset,
@@ -841,7 +849,7 @@ export default function SystemAdminDashboard() {
       setRefreshKey((x) => x + 1);
 
       liveRefreshTimerRef.current = null;
-    }, 250);
+    }, 750);
   }, []);
 
   useEffect(() => {
@@ -1300,7 +1308,7 @@ export default function SystemAdminDashboard() {
 
     if (searchClient.trim()) params.set("client", searchClient.trim());
     if (searchReport.trim()) params.set("report", searchReport.trim());
-    if (searchText.trim()) params.set("q", searchText.trim());
+    if (debouncedSearchText) params.set("q", debouncedSearchText);
 
     if (dateFrom) params.set("from", dateFrom);
     if (dateTo) params.set("to", dateTo);
@@ -1320,6 +1328,7 @@ export default function SystemAdminDashboard() {
     }>(`/system-admin-dashboard/reports?${params.toString()}`);
   };
   useEffect(() => {
+    if (!pinsHydrated || !correctionDiscardHydrated) return;
     let abort = false;
 
     const silentRefresh = silentRefreshNextRef.current;
@@ -1434,7 +1443,7 @@ export default function SystemAdminDashboard() {
     statusFilter,
     searchClient,
     searchReport,
-    searchText,
+    debouncedSearchText,
     dateFrom,
     dateTo,
     numberRangeType,
@@ -1447,6 +1456,8 @@ export default function SystemAdminDashboard() {
     refreshKey,
     pinnedIds,
     discardedCorrectionIds,
+    pinsHydrated,
+    correctionDiscardHydrated,
   ]);
 
   // ✅ Reset invalid status when switching formFilter

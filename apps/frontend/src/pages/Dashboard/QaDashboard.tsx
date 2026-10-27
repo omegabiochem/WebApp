@@ -721,6 +721,25 @@ export default function QaDashboard() {
   const [reportNoFrom, setReportNoFrom] = useState(initialFilters.reportNoFrom);
   const [reportNoTo, setReportNoTo] = useState(initialFilters.reportNoTo);
 
+  // Debounce all typed query filters; input fields themselves remain immediate.
+  const typedFilters = [searchClient, searchReport, searchText,
+    formNoFrom, formNoTo, reportNoFrom, reportNoTo] as const;
+  const [debouncedTypedFilters, setDebouncedTypedFilters] = useState(typedFilters);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedTypedFilters([
+        searchClient, searchReport, searchText,
+        formNoFrom, formNoTo, reportNoFrom, reportNoTo,
+      ]);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchClient, searchReport, searchText,
+      formNoFrom, formNoTo, reportNoFrom, reportNoTo]);
+  const [debouncedClient, debouncedReport, debouncedSearch,
+    debouncedFormFrom, debouncedFormTo,
+    debouncedReportFrom, debouncedReportTo] = debouncedTypedFilters;
+
+
   const [dateField, setDateField] = useState<
     "dateSent" | "dateTested" | "dateReceived" | "createdAt" | "updatedAt"
   >(initialFilters.dateField);
@@ -792,7 +811,7 @@ export default function QaDashboard() {
       setRefreshKey((x) => x + 1);
 
       liveRefreshTimerRef.current = null;
-    }, 250);
+    }, 750);
   }, []);
 
   useEffect(() => {
@@ -1318,20 +1337,20 @@ export default function QaDashboard() {
       params.set("discardedCorrectionIds", discardedCorrectionIds.join(","));
     }
 
-    if (searchClient.trim()) params.set("client", searchClient.trim());
-    if (searchReport.trim()) params.set("report", searchReport.trim());
-    if (searchText.trim()) params.set("q", searchText.trim());
+    if (debouncedClient.trim()) params.set("client", debouncedClient.trim());
+    if (debouncedReport.trim()) params.set("report", debouncedReport.trim());
+    if (debouncedSearch.trim()) params.set("q", debouncedSearch.trim());
 
     const dateRange = getPresetRange(datePreset, dateFrom, dateTo);
 
     if (dateRange.from) params.set("from", dateRange.from);
     if (dateRange.to) params.set("to", dateRange.to);
 
-    if (formNoFrom.trim()) params.set("formFrom", formNoFrom.trim());
-    if (formNoTo.trim()) params.set("formTo", formNoTo.trim());
+    if (debouncedFormFrom.trim()) params.set("formFrom", debouncedFormFrom.trim());
+    if (debouncedFormTo.trim()) params.set("formTo", debouncedFormTo.trim());
 
-    if (reportNoFrom.trim()) params.set("reportFrom", reportNoFrom.trim());
-    if (reportNoTo.trim()) params.set("reportTo", reportNoTo.trim());
+    if (debouncedReportFrom.trim()) params.set("reportFrom", debouncedReportFrom.trim());
+    if (debouncedReportTo.trim()) params.set("reportTo", debouncedReportTo.trim());
 
     return api<{
       rows: Report[];
@@ -1343,6 +1362,7 @@ export default function QaDashboard() {
   };
 
   useEffect(() => {
+    if (!pinsHydrated || !correctionDiscardHydrated) return;
     let abort = false;
 
     /*
@@ -1448,22 +1468,24 @@ export default function QaDashboard() {
     perPage,
     formFilter,
     statusFilter,
-    searchClient,
-    searchReport,
-    searchText,
+    debouncedClient,
+    debouncedReport,
+    debouncedSearch,
     datePreset,
     dateFrom,
     dateTo,
     numberRangeType,
-    formNoFrom,
-    formNoTo,
-    reportNoFrom,
-    reportNoTo,
+    debouncedFormFrom,
+    debouncedFormTo,
+    debouncedReportFrom,
+    debouncedReportTo,
     dateField,
     sortOrder,
     refreshKey,
     pinnedIds,
     discardedCorrectionIds,
+    pinsHydrated,
+    correctionDiscardHydrated,
   ]);
   // ✅ Reset invalid status when switching formFilter
   useEffect(() => {

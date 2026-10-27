@@ -460,6 +460,16 @@ function isCorrectionPriorityStatus(status: string) {
   ].includes(String(status));
 }
 
+// Debounce network filters while keeping inputs and URL state responsive.
+function useDebouncedValue<T>(value: T, delay = 300): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+
 // -----------------------------
 // Component
 // -----------------------------
@@ -834,6 +844,14 @@ export default function MicroDashboard() {
   const [fromDate, setFromDate] = useState(initialFilters.fromDate);
   const [toDate, setToDate] = useState(initialFilters.toDate);
 
+  const debouncedSearchClient = useDebouncedValue(searchClient);
+  const debouncedSearchReport = useDebouncedValue(searchReport);
+  const debouncedSearchText = useDebouncedValue(searchText);
+  const debouncedFormNoFrom = useDebouncedValue(formNoFrom);
+  const debouncedFormNoTo = useDebouncedValue(formNoTo);
+  const debouncedReportNoFrom = useDebouncedValue(reportNoFrom);
+  const debouncedReportNoTo = useDebouncedValue(reportNoTo);
+
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
   const [selectedModalMode, setSelectedModalMode] = useState<"VIEW" | "UPDATE">(
@@ -871,7 +889,7 @@ export default function MicroDashboard() {
       setRefreshKey((x) => x + 1);
 
       liveRefreshTimerRef.current = null;
-    }, 250);
+    }, 750);
   }, []);
 
   useEffect(() => {
@@ -1061,20 +1079,20 @@ export default function MicroDashboard() {
       params.set("discardedCorrectionIds", discardedCorrectionIds.join(","));
     }
 
-    if (searchClient.trim()) params.set("client", searchClient.trim());
-    if (searchReport.trim()) params.set("report", searchReport.trim());
-    if (searchText.trim()) params.set("q", searchText.trim());
+    if (debouncedSearchClient.trim()) params.set("client", debouncedSearchClient.trim());
+    if (debouncedSearchReport.trim()) params.set("report", debouncedSearchReport.trim());
+    if (debouncedSearchText.trim()) params.set("q", debouncedSearchText.trim());
 
     const dateRange = getPresetRange(datePreset, fromDate, toDate);
 
     if (dateRange.from) params.set("from", dateRange.from);
     if (dateRange.to) params.set("to", dateRange.to);
 
-    if (formNoFrom.trim()) params.set("formFrom", formNoFrom.trim());
-    if (formNoTo.trim()) params.set("formTo", formNoTo.trim());
+    if (debouncedFormNoFrom.trim()) params.set("formFrom", debouncedFormNoFrom.trim());
+    if (debouncedFormNoTo.trim()) params.set("formTo", debouncedFormNoTo.trim());
 
-    if (reportNoFrom.trim()) params.set("reportFrom", reportNoFrom.trim());
-    if (reportNoTo.trim()) params.set("reportTo", reportNoTo.trim());
+    if (debouncedReportNoFrom.trim()) params.set("reportFrom", debouncedReportNoFrom.trim());
+    if (debouncedReportNoTo.trim()) params.set("reportTo", debouncedReportNoTo.trim());
 
     return api<{
       rows: Report[];
@@ -1163,7 +1181,7 @@ export default function MicroDashboard() {
       }
     }
 
-    loadMicroDashboardReports();
+    if (pinsHydrated) loadMicroDashboardReports();
 
     return () => {
       abort = true;
@@ -1173,14 +1191,14 @@ export default function MicroDashboard() {
     perPage,
     formFilter,
     statusFilter,
-    searchClient,
-    searchReport,
-    searchText,
+    debouncedSearchClient,
+    debouncedSearchReport,
+    debouncedSearchText,
     numberRangeType,
-    formNoFrom,
-    formNoTo,
-    reportNoFrom,
-    reportNoTo,
+    debouncedFormNoFrom,
+    debouncedFormNoTo,
+    debouncedReportNoFrom,
+    debouncedReportNoTo,
     sortBy,
     sortDir,
     datePreset,
@@ -1188,6 +1206,7 @@ export default function MicroDashboard() {
     toDate,
     refreshKey,
     pinnedIds,
+    pinsHydrated,
     discardedCorrectionIds,
   ]);
 
@@ -4547,3 +4566,5 @@ export default function MicroDashboard() {
     </div>
   );
 }
+
+

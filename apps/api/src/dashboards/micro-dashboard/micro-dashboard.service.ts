@@ -286,93 +286,176 @@ export class MicroDashboardService {
     const hasFormRange = !!query.formFrom || !!query.formTo;
     const hasReportRange = !!query.reportFrom || !!query.reportTo;
 
-    /*
-     * Load all matching Micro / Micro Water / Sterility / APE rows first.
-     * Correction and pin priority must be applied before pagination.
-     */
-    const allRows = await this.prisma.dashboardReport.findMany({
-      where,
-      orderBy: {
-        [dateField]: sort,
-      } as any,
-    });
+    // Numeric sequence ranges require suffix extraction; preserve the original
+    // complete in-memory filtering for those requests only.
+    const needsNumberRange =
+      (rangeType === 'FORM' && hasFormRange) ||
+      (rangeType === 'REPORT' && hasReportRange);
 
-    /*
-     * Apply optional form/report number range.
-     */
-    const filteredRows =
-      rangeType === 'FORM' && hasFormRange
-        ? allRows.filter((r) =>
-            isInRange(
-              extractSequence(r.formNumber),
-              query.formFrom,
-              query.formTo,
-            ),
-          )
-        : rangeType === 'REPORT' && hasReportRange
+    const orderBy = [{ [dateField]: sort }, { id: 'asc' }] as any;
+
+    if (needsNumberRange) {
+      const allRows = await this.prisma.dashboardReport.findMany({
+        where,
+        orderBy,
+      });
+      const filteredRows =
+        rangeType === 'FORM'
           ? allRows.filter((r) =>
+              isInRange(
+                extractSequence(r.formNumber),
+                query.formFrom,
+                query.formTo,
+              ),
+            )
+          : allRows.filter((r) =>
               isInRange(
                 extractSequence(r.reportNumber),
                 query.reportFrom,
                 query.reportTo,
               ),
-            )
-          : allRows;
-
-    /*
-     * Priority:
-     * 1. Active centralized correction/change not dismissed by this user
-     * 2. Pinned reports
-     * 3. Normal reports
-     */
-    const correctionRows: typeof filteredRows = [];
-    const pinnedRows: typeof filteredRows = [];
-    const normalRows: typeof filteredRows = [];
-
-    for (const row of filteredRows) {
-      const sourceId = String(row.sourceId);
-
-      const correctionImportant =
-        isCorrectionPriorityStatus(String(row.status)) &&
-        !discardedCorrectionSet.has(sourceId);
-
-      if (correctionImportant) {
-        correctionRows.push(row);
-        continue;
+            );
+      const correctionRows: typeof filteredRows = [];
+      const pinnedRows: typeof filteredRows = [];
+      const normalRows: typeof filteredRows = [];
+      for (const row of filteredRows) {
+        const id = String(row.sourceId);
+        if (
+          isCorrectionPriorityStatus(String(row.status)) &&
+          !discardedCorrectionSet.has(id)
+        ) {
+          correctionRows.push(row);
+        } else if (pinOrder.has(id)) {
+          pinnedRows.push(row);
+        } else {
+          normalRows.push(row);
+        }
       }
-
-      if (pinnedIds.includes(sourceId)) {
-        pinnedRows.push(row);
-        continue;
-      }
-
-      normalRows.push(row);
+      pinnedRows.sort(
+        (a, b) =>
+          (pinOrder.get(String(a.sourceId)) ?? Number.MAX_SAFE_INTEGER) -
+          (pinOrder.get(String(b.sourceId)) ?? Number.MAX_SAFE_INTEGER),
+      );
+      const orderedRows = [...correctionRows, ...pinnedRows, ...normalRows];
+      const total = orderedRows.length;
+      const totalPages = Math.max(1, Math.ceil(total / perPage));
+      const safePage = Math.min(page, totalPages);
+      return {
+        rows: orderedRows
+          .slice((safePage - 1) * perPage, safePage * perPage)
+          .map(mapDashboardRow),
+        total,
+        page: safePage,
+        perPage,
+        totalPages,
+      };
     }
 
-    /*
-     * Preserve explicit user pin order.
-     */
-    pinnedRows.sort((a, b) => {
-      const ai = pinOrder.get(String(a.sourceId)) ?? Number.MAX_SAFE_INTEGER;
-      const bi = pinOrder.get(String(b.sourceId)) ?? Number.MAX_SAFE_INTEGER;
+    const correctionStatuses = [
+      'CORRECTION_REQUESTED',
+      'UNDER_CORRECTION_UPDATE',
+      'CHANGE_REQUESTED',
+      'UNDER_CHANGE_UPDATE',
+    ];
 
-      return ai - bi;
-    });
+    const priorityWhere: Prisma.DashboardReportWhereInput = {
+      status: { in: correctionStatuses },
+      ...(discardedCorrectionIds.length
+        ? { sourceId: { notIn: discardedCorrectionIds } }
+        : {}),
+    };
 
-    const orderedRows = [...correctionRows, ...pinnedRows, ...normalRows];
+    // Matches reports that are *not* in the active correction priority group.
+    const nonPriorityWhere: Prisma.DashboardReportWhereInput =
+      discardedCorrectionIds.length
+        ? {
+            OR: [
+              { status: { notIn: correctionStatuses } },
+              { sourceId: { in: discardedCorrectionIds } },
+            ],
+          }
+        : { status: { notIn: correctionStatuses } };
 
-    /*
-     * Pagination last.
-     */
-    const total = orderedRows.length;
+    const correctionWhere: Prisma.DashboardReportWhereInput = {
+      AND: [where, priorityWhere],
+    };
+    const pinnedWhere: Prisma.DashboardReportWhereInput = {
+      AND: [where, nonPriorityWhere, { sourceId: { in: pinnedIds } }],
+    };
+    const normalWhere: Prisma.DashboardReportWhereInput = {
+      AND: [
+        where,
+        nonPriorityWhere,
+        ...(pinnedIds.length
+          ? [
+              {
+                sourceId: { notIn: pinnedIds },
+              } as Prisma.DashboardReportWhereInput,
+            ]
+          : []),
+      ],
+    };
+
+    // Query only row counts and pinned rows; never load the whole dashboard.
+    // Keep the pinned query unconditional so TypeScript doesn't infer never[].
+    const [correctionCount, pinnedRows, normalCount] = await Promise.all([
+      this.prisma.dashboardReport.count({ where: correctionWhere }),
+      this.prisma.dashboardReport.findMany({ where: pinnedWhere }),
+      this.prisma.dashboardReport.count({ where: normalWhere }),
+    ]);
+
+    pinnedRows.sort(
+      (a, b) =>
+        (pinOrder.get(String(a.sourceId)) ?? Number.MAX_SAFE_INTEGER) -
+        (pinOrder.get(String(b.sourceId)) ?? Number.MAX_SAFE_INTEGER),
+    );
+
+    const pinnedCount = pinnedRows.length;
+    const total = correctionCount + pinnedCount + normalCount;
     const totalPages = Math.max(1, Math.ceil(total / perPage));
     const safePage = Math.min(page, totalPages);
     const safeSkip = (safePage - 1) * perPage;
+    const pageEnd = safeSkip + perPage;
+    const rows: typeof pinnedRows = [];
+
+    // Tier 1: corrections sorted by date.
+    const correctionStart = Math.max(0, safeSkip);
+    const correctionEnd = Math.min(correctionCount, pageEnd);
+    if (correctionStart < correctionEnd) {
+      const matching = await this.prisma.dashboardReport.findMany({
+        where: correctionWhere,
+        orderBy,
+        skip: correctionStart,
+        take: correctionEnd - correctionStart,
+      });
+      rows.push(...matching);
+    }
+
+    // Tier 2: pinned reports in the user's explicitly stored pin order.
+    const pinStart = Math.max(0, safeSkip - correctionCount);
+    const pinEnd = Math.min(pinnedCount, pageEnd - correctionCount);
+    if (pinStart < pinEnd) {
+      rows.push(...pinnedRows.slice(pinStart, pinEnd));
+    }
+
+    // Tier 3: normal reports, paginated directly by PostgreSQL.
+    const normalStart = Math.max(0, safeSkip - correctionCount - pinnedCount);
+    const normalEnd = Math.min(
+      normalCount,
+      pageEnd - correctionCount - pinnedCount,
+    );
+    if (normalStart < normalEnd) {
+      const matching = await this.prisma.dashboardReport.findMany({
+        where: normalWhere,
+        orderBy,
+        skip: normalStart,
+        take: normalEnd - normalStart,
+      });
+      rows.push(...matching);
+    }
 
     return {
-      rows: orderedRows
-        .slice(safeSkip, safeSkip + perPage)
-        .map(mapDashboardRow),
+      rows: rows.map(mapDashboardRow),
       total,
       page: safePage,
       perPage,

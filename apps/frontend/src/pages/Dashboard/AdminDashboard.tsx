@@ -767,6 +767,49 @@ export default function AdminDashboard() {
   const [formNoTo, setFormNoTo] = useState(initialFilters.formNoTo);
   const [reportNoFrom, setReportNoFrom] = useState(initialFilters.reportNoFrom);
   const [reportNoTo, setReportNoTo] = useState(initialFilters.reportNoTo);
+
+  // Debounce only API filter values. User input and URL state remain immediate.
+  const [debouncedTypedFilters, setDebouncedTypedFilters] = useState<string[]>([
+    searchClient,
+    searchReport,
+    searchText,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+  ]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedTypedFilters([
+        searchClient,
+        searchReport,
+        searchText,
+        formNoFrom,
+        formNoTo,
+        reportNoFrom,
+        reportNoTo,
+      ]);
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [
+    searchClient,
+    searchReport,
+    searchText,
+    formNoFrom,
+    formNoTo,
+    reportNoFrom,
+    reportNoTo,
+  ]);
+  const [
+    debouncedClient,
+    debouncedReport,
+    debouncedSearch,
+    debouncedFormFrom,
+    debouncedFormTo,
+    debouncedReportFrom,
+    debouncedReportTo,
+  ] = debouncedTypedFilters;
+
   const [dateField, setDateField] = useState<
     "dateSent" | "dateTested" | "dateReceived" | "createdAt" | "updatedAt"
   >(initialFilters.dateField);
@@ -1105,7 +1148,7 @@ export default function AdminDashboard() {
       setRefreshKey((x) => x + 1);
 
       liveRefreshTimerRef.current = null;
-    }, 250);
+    }, 750);
   }, []);
 
   useEffect(() => {
@@ -1300,18 +1343,21 @@ export default function AdminDashboard() {
       params.set("discardedCorrectionIds", discardedCorrectionIds.join(","));
     }
 
-    if (searchClient.trim()) params.set("client", searchClient.trim());
-    if (searchReport.trim()) params.set("report", searchReport.trim());
-    if (searchText.trim()) params.set("q", searchText.trim());
+    if (debouncedClient.trim()) params.set("client", debouncedClient.trim());
+    if (debouncedReport.trim()) params.set("report", debouncedReport.trim());
+    if (debouncedSearch.trim()) params.set("q", debouncedSearch.trim());
 
     if (dateFrom) params.set("from", dateFrom);
     if (dateTo) params.set("to", dateTo);
 
-    if (formNoFrom.trim()) params.set("formFrom", formNoFrom.trim());
-    if (formNoTo.trim()) params.set("formTo", formNoTo.trim());
+    if (debouncedFormFrom.trim())
+      params.set("formFrom", debouncedFormFrom.trim());
+    if (debouncedFormTo.trim()) params.set("formTo", debouncedFormTo.trim());
 
-    if (reportNoFrom.trim()) params.set("reportFrom", reportNoFrom.trim());
-    if (reportNoTo.trim()) params.set("reportTo", reportNoTo.trim());
+    if (debouncedReportFrom.trim())
+      params.set("reportFrom", debouncedReportFrom.trim());
+    if (debouncedReportTo.trim())
+      params.set("reportTo", debouncedReportTo.trim());
 
     return api<{
       rows: Report[];
@@ -1323,6 +1369,7 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
+    if (!pinsHydrated || !correctionDiscardHydrated) return;
     let abort = false;
 
     /*
@@ -1436,21 +1483,23 @@ export default function AdminDashboard() {
     perPage,
     formFilter,
     statusFilter,
-    searchClient,
-    searchReport,
-    searchText,
+    debouncedClient,
+    debouncedReport,
+    debouncedSearch,
     dateFrom,
     dateTo,
     numberRangeType,
-    formNoFrom,
-    formNoTo,
-    reportNoFrom,
-    reportNoTo,
+    debouncedFormFrom,
+    debouncedFormTo,
+    debouncedReportFrom,
+    debouncedReportTo,
     dateField,
     sortOrder,
     refreshKey,
     pinnedIds,
     discardedCorrectionIds,
+    pinsHydrated,
+    correctionDiscardHydrated,
   ]);
 
   // ✅ Reset invalid status when switching formFilter
@@ -1565,7 +1614,12 @@ export default function AdminDashboard() {
     refreshKey,
   ]);
 
+  const skipInitialPageReset = React.useRef(true);
   useEffect(() => {
+    if (skipInitialPageReset.current) {
+      skipInitialPageReset.current = false;
+      return;
+    }
     setPage(1);
   }, [
     formFilter,
@@ -1662,6 +1716,7 @@ export default function AdminDashboard() {
   ]);
 
   useEffect(() => {
+    if (hydratedFromUrlRef.current) return;
     const next = getInitialAdminFilters(searchParams, FILTER_STORAGE_KEY);
 
     setFormFilter(next.formFilter);
