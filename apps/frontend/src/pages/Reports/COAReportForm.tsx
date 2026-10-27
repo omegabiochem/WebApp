@@ -579,10 +579,18 @@ export default function COAReportForm({
   const [templateVersion, setTemplateVersion] = useState<number>(0);
   const [templateName, setTemplateName] = useState<string>("");
 
+  // A client correcting a previously submitted COA must see every
+  // submission row, including rows without a specification yet.
+  const isClientCorrectionUpdate =
+    effectiveFormRole === "CLIENT" &&
+    (status === "UNDER_CHANGE_UPDATE" ||
+      status === "UNDER_CORRECTION_UPDATE");
+
   const isSubmissionForm =
     status === "DRAFT" ||
     status === "UNDER_DRAFT_REVIEW" ||
-    status === "SUBMITTED_BY_CLIENT";
+    status === "SUBMITTED_BY_CLIENT" ||
+    isClientCorrectionUpdate;
 
   const coaRowsToRender = useMemo(() => {
     if (isSubmissionForm) return coaRows; // show all rows in submission form
@@ -1059,6 +1067,44 @@ export default function COAReportForm({
       (await runBusy("SAVE", async () => {
         const values = makeValues();
         validateAndSetErrors(values);
+
+        // During client corrections to the COA specification table, an item
+        // and its specification must both be provided. Empty unused rows
+        // remain optional. Lab-only SOP/result/date fields are not required
+        // from the client.
+        const correctingCoaRows =
+          isClientCorrectionUpdate &&
+          openCorrections.some(
+            (c) =>
+              c.fieldKey === "coaRows" ||
+              c.fieldKey.startsWith("coaRows:"),
+          );
+
+        if (correctingCoaRows) {
+          const populated = coaRows.filter(
+            (row) =>
+              String(row.item ?? "").trim() !== "" ||
+              String(row.Specification ?? "").trim() !== "",
+          );
+
+          if (populated.length === 0) {
+            alert("⚠️ Complete at least one COA item and specification before saving.");
+            return false;
+          }
+
+          const incomplete = populated.find(
+            (row) =>
+              !String(row.item ?? "").trim() ||
+              !String(row.Specification ?? "").trim(),
+          );
+
+          if (incomplete) {
+            alert(
+              `⚠️ Complete both Item and Specification for ${String(incomplete.item ?? "").trim() || incomplete.key} before saving.`,
+            );
+            return false;
+          }
+        }
 
         const fullPayload = {
           client,
@@ -1908,11 +1954,7 @@ export default function COAReportForm({
             <div />
 
             <div className="whitespace-nowrap text-center text-[18px] font-bold underline">
-              {status === "DRAFT" ||
-              status === "UNDER_DRAFT_REVIEW" ||
-              status === "SUBMITTED_BY_CLIENT"
-                ? "COA SUBMISSION FORM"
-                : "COA REPORT"}
+              {isSubmissionForm ? "COA SUBMISSION FORM" : "COA REPORT"}
             </div>
 
             <div className="text-right text-[12px] font-bold">
