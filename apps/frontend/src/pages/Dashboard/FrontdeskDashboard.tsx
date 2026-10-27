@@ -127,6 +127,8 @@ const FRONTDESK_STATUSES: ("ALL" | ReportStatus)[] = [
   "FRONTDESK_NEEDS_CORRECTION",
 ];
 
+const FRONTDESK_VISIBLE_STATUSES = new Set<string>(FRONTDESK_STATUSES.filter((s) => s !== "ALL"));
+
 // used to know which viewer to render
 // const formTypeToSlug: Record<string, string> = {
 //   MICRO_MIX: "micro-mix",
@@ -740,14 +742,15 @@ export default function FrontDeskDashboard() {
        * Immediate visible row update.
        */
       setReports((prev) =>
-        prev.map((report) =>
-          report.id === id
-            ? {
-                ...report,
-                status,
-              }
-            : report,
-        ),
+        prev
+          .map((report) =>
+            report.id === id ? { ...report, status } : report,
+          )
+          .filter((report) =>
+            status === String(report.status) && report.id === id
+              ? FRONTDESK_VISIBLE_STATUSES.has(String(report.status))
+              : true,
+          ),
       );
 
       /*
@@ -1030,7 +1033,7 @@ export default function FrontDeskDashboard() {
 
         if (abort) return;
 
-        setReports(res.rows);
+        setReports(res.rows.filter((r) => FRONTDESK_VISIBLE_STATUSES.has(String(r.status))));
         setServerTotal(res.total);
         setServerTotalPages(res.totalPages);
 
