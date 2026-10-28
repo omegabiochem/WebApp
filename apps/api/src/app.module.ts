@@ -37,6 +37,7 @@ import { QaDashboardModule } from './dashboards/qa-dashboard/qa-dashboard.module
 import { ChemistryDashboardModule } from './dashboards/chemistry-dashboard/chemistry-dashbaord.module';
 import { ClientDetailsModule } from './client-details/client-details/client-details.module';
 import { BillingModule } from './billing/billing.module';
+import { TestingInquiriesModule } from './testinginquiries/testing-inquiries.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { BillingModule } from './billing/billing.module';
     QaDashboardModule,
     ClientDetailsModule,
     BillingModule,
+    TestingInquiriesModule,
   ],
   controllers: [HealthController, FaviconController],
   providers: [

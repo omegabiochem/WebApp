@@ -31,12 +31,6 @@ const FRONTDESK_STATUSES = [
   'RECEIVED_BY_FRONTDESK',
   'FRONTDESK_ON_HOLD',
   'FRONTDESK_NEEDS_CORRECTION',
-
-  // Centralized change / correction workflow.
-  'CORRECTION_REQUESTED',
-  'UNDER_CORRECTION_UPDATE',
-  'CHANGE_REQUESTED',
-  'UNDER_CHANGE_UPDATE',
 ];
 
 function toInt(value: any, fallback: number) {
@@ -257,12 +251,14 @@ export class FrontdeskDashboardService {
     const sort: Prisma.SortOrder = query.sort === 'asc' ? 'asc' : 'desc';
 
     const where: Prisma.DashboardReportWhereInput = {
+      // Whitelist every response, including requests supplying a status directly.
+      // Centralized correction/change states are never shown on Frontdesk.
       status:
-        status !== 'ALL'
-          ? status
-          : {
-              in: FRONTDESK_STATUSES,
-            },
+        status === 'ALL'
+          ? { in: FRONTDESK_STATUSES }
+          : FRONTDESK_STATUSES.includes(status)
+            ? status
+            : { in: [] },
     };
 
     const mappedForm = mapFormFilter(form);

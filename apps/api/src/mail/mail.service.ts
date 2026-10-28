@@ -791,7 +791,11 @@ ${description}
 
     clientName?: string | null;
 
-    attachment: {
+    attachment?: {
+      filename: string;
+      content: Buffer;
+    };
+    excelAttachment?: {
       filename: string;
       content: Buffer;
     };
@@ -809,7 +813,7 @@ ${description}
     const cc = (args.cc ?? []).map((x) => String(x).trim()).filter(Boolean);
 
     const clientDisplayName =
-  String(args.clientName || "").trim() || args.clientCode;
+      String(args.clientName || '').trim() || args.clientCode;
 
     const htmlBody = `
 <!doctype html>
@@ -920,7 +924,7 @@ ${description}
                   font-size:12px;
                 "
               >
-                The official invoice PDF is attached to this email.
+                The official invoice PDF and Excel copy are attached to this email.
               </p>
             </td>
           </tr>
@@ -966,7 +970,7 @@ ${description}
         `Invoice: ${args.invoiceNumber}\n` +
         `Client: ${clientDisplayName}\n\n` +
         `${args.messageBody}\n\n` +
-        `The official invoice PDF is attached.`,
+        `Your selected invoice document(s) are attached.`,
 
       ReplyTo: replyTo,
 
@@ -997,16 +1001,27 @@ ${description}
       ],
 
       Attachments: [
-        {
-          Name: args.attachment.filename,
-
-          Content: args.attachment.content.toString('base64'),
-
-          ContentType: 'application/pdf',
-
-          // Normal attachment, not embedded inside HTML
-          ContentID: null,
-        },
+        ...(args.attachment
+          ? [
+              {
+                Name: args.attachment.filename,
+                Content: args.attachment.content.toString('base64'),
+                ContentType: 'application/pdf',
+                ContentID: null,
+              },
+            ]
+          : []),
+        ...(args.excelAttachment
+          ? [
+              {
+                Name: args.excelAttachment.filename,
+                Content: args.excelAttachment.content.toString('base64'),
+                ContentType:
+                  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                ContentID: null,
+              },
+            ]
+          : []),
       ],
     });
 

@@ -134,7 +134,7 @@ const EDIT_MAP: Record<UserRole, string[]> = {
     'tmy_spec',
     'pathogens',
     'organisms',
-    'comments'
+    'comments',
   ],
 };
 
@@ -3052,18 +3052,21 @@ export class ReportsService {
       meta?: Record<string, any>;
     },
   ) {
-    // delegate; AttachmentsService handles FILES_DIR & DB
-    // reports.service.ts (addAttachment handler)
-    return this.attachments.create({
+    const attachment = await this.attachments.create({
       reportId: id,
       file,
       kind: (body.kind as any) ?? 'OTHER',
       source: body.source ?? 'upload',
       pages: body.pages ? Number(body.pages) : undefined,
-      providedChecksum: body.checksum, // you already added this
+      providedChecksum: body.checksum,
       createdBy: body.createdBy ?? user?.userId ?? 'web',
-      meta: typeof body.meta === 'string' ? JSON.parse(body.meta) : body.meta, // ⬅ pass meta
+      meta: typeof body.meta === 'string' ? JSON.parse(body.meta) : body.meta,
     });
+
+    // Notify all connected dashboards after successful upload.
+    this.reportsGateway.notifyReportUpdate({ id });
+
+    return attachment;
   }
 
   // reports.service.ts

@@ -5,10 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
-import {
-  Prisma,
-  UserRole,
-} from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 
 import type { Readable } from 'stream';
 
@@ -20,6 +17,7 @@ import { getRequestContext } from '../common/request-context';
 
 import { SendInvoiceDto } from './dto/send-invoice.dto';
 import { BillingPdfService } from './billing-pdf.service';
+import { BillingExcelService } from './billing-excel.service';
 
 type AuthUser = {
   userId: string;
@@ -29,33 +27,23 @@ type AuthUser = {
 @Injectable()
 export class BillingEmailService {
   constructor(
-    private readonly prisma:
-      PrismaService,
+    private readonly prisma: PrismaService,
 
-    private readonly mail:
-      MailService,
+    private readonly mail: MailService,
 
-    private readonly storage:
-      StorageService,
+    private readonly storage: StorageService,
 
-    private readonly pdf:
-      BillingPdfService,
+    private readonly pdf: BillingPdfService,
+
+    private readonly excel: BillingExcelService,
   ) {}
 
   /* =========================================================
      AUTH
   ========================================================= */
 
-  private assertSender(
-    user: AuthUser,
-  ) {
-    if (
-      ![
-        'FRONTDESK',
-        'ADMIN',
-        'SYSTEMADMIN',
-      ].includes(user.role)
-    ) {
+  private assertSender(user: AuthUser) {
+    if (!['FRONTDESK', 'ADMIN', 'SYSTEMADMIN'].includes(user.role)) {
       throw new ForbiddenException(
         'You do not have permission to send invoices',
       );
@@ -66,66 +54,31 @@ export class BillingEmailService {
      HELPERS
   ========================================================= */
 
-  private normalizeEmail(
-    value:
-      | string
-      | null
-      | undefined,
-  ) {
-    return String(
-      value ?? '',
-    )
+  private normalizeEmail(value: string | null | undefined) {
+    return String(value ?? '')
       .trim()
       .toLowerCase();
   }
 
-  private async streamToBuffer(
-    stream: Readable,
-  ): Promise<Buffer> {
-    const chunks:
-      Buffer[] = [];
+  private async streamToBuffer(stream: Readable): Promise<Buffer> {
+    const chunks: Buffer[] = [];
 
-    for await (
-      const chunk of stream
-    ) {
-      chunks.push(
-        Buffer.isBuffer(
-          chunk,
-        )
-          ? chunk
-          : Buffer.from(
-              chunk,
-            ),
-      );
+    for await (const chunk of stream) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     }
 
-    return Buffer.concat(
-      chunks,
-    );
+    return Buffer.concat(chunks);
   }
 
-  private errorMessage(
-    error: any,
-  ) {
-    return String(
-      error?.message ??
-        error ??
-        'Unknown email error',
-    ).slice(
+  private errorMessage(error: any) {
+    return String(error?.message ?? error ?? 'Unknown email error').slice(
       0,
       4000,
     );
   }
 
-
-  private addDays(
-    value: Date,
-    days: number,
-  ) {
-    return new Date(
-      value.getTime() +
-        days * 24 * 60 * 60 * 1000,
-    );
+  private addDays(value: Date, days: number) {
+    return new Date(value.getTime() + days * 24 * 60 * 60 * 1000);
   }
 
   /* =========================================================
@@ -139,45 +92,30 @@ export class BillingEmailService {
       invoiceId: string;
       clientCode: string;
       details: string;
-      changes?: Record<
-        string,
-        any
-      >;
+      changes?: Record<string, any>;
     },
   ) {
-    const ctx =
-      getRequestContext();
+    const ctx = getRequestContext();
 
     await this.prisma.auditTrail.create({
       data: {
-        action:
-          args.action,
+        action: args.action,
 
-        entity:
-          'BILLING_INVOICE',
+        entity: 'BILLING_INVOICE',
 
-        entityId:
-          args.invoiceId,
+        entityId: args.invoiceId,
 
-        userId:
-          user.userId,
+        userId: user.userId,
 
-        role:
-          user.role,
+        role: user.role,
 
-        ipAddress:
-          ctx?.ip ??
-          null,
+        ipAddress: ctx?.ip ?? null,
 
-        clientCode:
-          args.clientCode,
+        clientCode: args.clientCode,
 
-        details:
-          args.details,
+        details: args.details,
 
-        changes:
-          (args.changes ??
-            {}) as Prisma.InputJsonValue,
+        changes: (args.changes ?? {}) as Prisma.InputJsonValue,
       },
     });
   }
@@ -219,7 +157,9 @@ export class BillingEmailService {
     const scheduledSendAt = new Date(dto?.scheduledSendAt);
 
     if (Number.isNaN(scheduledSendAt.getTime())) {
-      throw new BadRequestException('scheduledSendAt must be a valid date/time');
+      throw new BadRequestException(
+        'scheduledSendAt must be a valid date/time',
+      );
     }
 
     if (scheduledSendAt.getTime() <= Date.now() + 30_000) {
@@ -228,9 +168,7 @@ export class BillingEmailService {
       );
     }
 
-    const toEmail = this.normalizeEmail(
-      dto?.toEmail || invoice.billingEmail,
-    );
+    const toEmail = this.normalizeEmail(dto?.toEmail || invoice.billingEmail);
 
     if (!toEmail) {
       throw new BadRequestException(
@@ -285,10 +223,7 @@ export class BillingEmailService {
     });
   }
 
-  async cancelScheduledInvoice(
-    user: AuthUser,
-    invoiceId: string,
-  ) {
+  async cancelScheduledInvoice(user: AuthUser, invoiceId: string) {
     this.assertSender(user);
 
     const invoice = await this.prisma.billingInvoice.findUnique({
@@ -359,60 +294,39 @@ export class BillingEmailService {
   async sendInvoice(
     user: AuthUser,
     invoiceId: string,
-    dto: SendInvoiceDto,
+    dto: SendInvoiceDto & { sendPdf?: boolean; sendExcel?: boolean },
   ) {
-    this.assertSender(
-      user,
-    );
+    this.assertSender(user);
 
-    const invoice =
-      await this.prisma.billingInvoice.findUnique({
-        where: {
-          id:
-            invoiceId,
-        },
-      });
+    const invoice = await this.prisma.billingInvoice.findUnique({
+      where: {
+        id: invoiceId,
+      },
+    });
 
     if (!invoice) {
-      throw new NotFoundException(
-        'Invoice not found',
-      );
+      throw new NotFoundException('Invoice not found');
     }
 
     /*
      * DRAFT and VOID can never be emailed
      * as official invoices.
      */
-    if (
-      invoice.status !==
-        'CONFIRMED' &&
-      invoice.status !==
-        'SENT'
-    ) {
-      throw new BadRequestException(
-        'Only CONFIRMED invoices can be sent',
-      );
+    if (invoice.status !== 'CONFIRMED' && invoice.status !== 'SENT') {
+      throw new BadRequestException('Only CONFIRMED invoices can be sent');
     }
 
     /*
      * Explicit resend protection.
      */
-    if (
-      invoice.status ===
-        'SENT' &&
-      dto.resend !== true
-    ) {
+    if (invoice.status === 'SENT' && dto.resend !== true) {
       throw new BadRequestException(
         'Invoice has already been sent. Set resend=true to send it again.',
       );
     }
 
-    if (
-      !invoice.invoiceNumber
-    ) {
-      throw new BadRequestException(
-        'Invoice number is missing',
-      );
+    if (!invoice.invoiceNumber) {
+      throw new BadRequestException('Invoice number is missing');
     }
 
     /*
@@ -421,11 +335,7 @@ export class BillingEmailService {
      * Admin/frontdesk may override recipient explicitly
      * when necessary.
      */
-    const toEmail =
-      this.normalizeEmail(
-        dto.toEmail ||
-          invoice.billingEmail,
-      );
+    const toEmail = this.normalizeEmail(dto.toEmail || invoice.billingEmail);
 
     if (!toEmail) {
       throw new BadRequestException(
@@ -433,22 +343,13 @@ export class BillingEmailService {
       );
     }
 
-    const ccEmails =
-      Array.from(
-        new Set(
-          (
-            dto.ccEmails ??
-            []
-          )
-            .map(
-              (email) =>
-                this.normalizeEmail(
-                  email,
-                ),
-            )
-            .filter(Boolean),
-        ),
-      );
+    const ccEmails = Array.from(
+      new Set(
+        (dto.ccEmails ?? [])
+          .map((email) => this.normalizeEmail(email))
+          .filter(Boolean),
+      ),
+    );
 
     const subject =
       dto.subject?.trim() ||
@@ -459,6 +360,14 @@ export class BillingEmailService {
       `Please find attached invoice ${invoice.invoiceNumber} for your records.
 
 If you have any questions regarding this invoice, please contact Omega BioChem Lab.`;
+
+    const sendPdf = dto.sendPdf !== false;
+    const sendExcel = dto.sendExcel !== false;
+    if (!sendPdf && !sendExcel) {
+      throw new BadRequestException(
+        'Select at least one invoice attachment format',
+      );
+    }
 
     /*
      * Initial delivery gets its due date from the actual send attempt.
@@ -511,34 +420,22 @@ If you have any questions regarding this invoice, please contact Omega BioChem L
     /*
      * Read the EXACT PDF saved on the invoice.
      */
-    let pdfBuffer:
-      Buffer;
+    let pdfBuffer: Buffer;
 
     try {
-      const stream =
-        await this.storage.createReadStream(
-          deliveryInvoice.pdfStorageKey,
-        );
+      const stream = await this.storage.createReadStream(
+        deliveryInvoice.pdfStorageKey,
+      );
 
-      pdfBuffer =
-        await this.streamToBuffer(
-          stream,
-        );
+      pdfBuffer = await this.streamToBuffer(stream);
     } catch (error: any) {
       throw new BadRequestException(
-        `Unable to read invoice PDF: ${this.errorMessage(
-          error,
-        )}`,
+        `Unable to read invoice PDF: ${this.errorMessage(error)}`,
       );
     }
 
-    if (
-      pdfBuffer.length ===
-      0
-    ) {
-      throw new BadRequestException(
-        'Stored invoice PDF is empty',
-      );
+    if (pdfBuffer.length === 0) {
+      throw new BadRequestException('Stored invoice PDF is empty');
     }
 
     try {
@@ -548,182 +445,143 @@ If you have any questions regarding this invoice, please contact Omega BioChem L
        * Invoice only becomes SENT after
        * Postmark accepts the message.
        */
-      const result =
-        await this.mail.sendInvoiceEmail({
-          to:
-            toEmail,
+      // Build spreadsheet before sending. An Excel failure must not result
+      // in a PDF-only email marked as successfully sent.
+      const excelFile = sendExcel
+        ? await this.excel.generate(user, invoiceId)
+        : null;
 
-          cc:
-            ccEmails,
+      const result = await this.mail.sendInvoiceEmail({
+        to: toEmail,
 
-          subject,
+        cc: ccEmails,
 
-          messageBody,
+        subject,
 
-          invoiceId:
-            invoice.id,
+        messageBody,
 
-          invoiceNumber:
-            invoice.invoiceNumber,
+        invoiceId: invoice.id,
 
-          clientCode:
-            invoice.clientCode,
+        invoiceNumber: invoice.invoiceNumber,
 
-            clientName:
-  invoice.clientName,
+        clientCode: invoice.clientCode,
 
-          attachment: {
-            filename:
-              deliveryInvoice.pdfFilename,
+        clientName: invoice.clientName,
 
-            content:
-              pdfBuffer,
-          },
-        });
+        attachment: sendPdf
+          ? {
+              filename: deliveryInvoice.pdfFilename,
+              content: pdfBuffer,
+            }
+          : undefined,
+        excelAttachment: excelFile
+          ? {
+              filename: excelFile.filename,
+              content: excelFile.content,
+            }
+          : undefined,
+      });
 
       const emailAcceptedAt = new Date();
 
       const invoiceSentAt =
         invoice.status === 'SENT'
-          ? invoice.sentAt ?? emailAcceptedAt
+          ? (invoice.sentAt ?? emailAcceptedAt)
           : initialDeliveryAt;
 
       /*
        * Persist history + invoice status atomically
        * after successful Postmark acceptance.
        */
-      const transactionResult =
-        await this.prisma.$transaction(
-          async (tx) => {
-            const email =
-              await tx.billingInvoiceEmail.create({
-                data: {
-                  invoiceId:
-                    invoice.id,
+      const transactionResult = await this.prisma.$transaction(async (tx) => {
+        const email = await tx.billingInvoiceEmail.create({
+          data: {
+            invoiceId: invoice.id,
 
-                  toEmail,
-
-                  ccEmails,
-
-                  subject,
-
-                  messageBody,
-
-                  status:
-                    'SENT',
-
-                  provider:
-                    'POSTMARK',
-
-                  providerMessageId:
-                    result.MessageID ??
-                    null,
-
-                  sentBy:
-                    user.userId,
-
-                  sentAt:
-                    emailAcceptedAt,
-
-                  error:
-                    null,
-                },
-              });
-
-            const updatedInvoice =
-              await tx.billingInvoice.update({
-                where: {
-                  id:
-                    invoice.id,
-                },
-
-                data: {
-                  status:
-                    'SENT',
-
-                  sentAt:
-                    invoiceSentAt,
-
-                  sentBy:
-                    user.userId,
-
-                  dueDate:
-                    deliveryInvoice.dueDate,
-
-                  scheduledSendAt:
-                    null,
-
-                  scheduledToEmail:
-                    null,
-
-                  scheduledBy:
-                    null,
-
-                  scheduledAt:
-                    null,
-
-                  updatedBy:
-                    user.userId,
-                },
-              });
-
-            return {
-              email,
-              updatedInvoice,
-            };
-          },
-        );
-
-      await this.audit(
-        user,
-        {
-          action:
-            invoice.status ===
-            'SENT'
-              ? 'INVOICE_RESENT'
-              : 'INVOICE_SENT',
-
-          invoiceId:
-            invoice.id,
-
-          clientCode:
-            invoice.clientCode,
-
-          details:
-            `${
-              invoice.status ===
-              'SENT'
-                ? 'Resent'
-                : 'Sent'
-            } ${invoice.invoiceNumber} to ${toEmail}`,
-
-          changes: {
             toEmail,
 
             ccEmails,
 
-            provider:
-              'POSTMARK',
+            subject,
 
-            providerMessageId:
-              result.MessageID ??
-              null,
+            messageBody,
 
-            pdfChecksum:
-              deliveryInvoice.pdfChecksum,
+            status: 'SENT',
+
+            provider: 'POSTMARK',
+
+            providerMessageId: result.MessageID ?? null,
+
+            sentBy: user.userId,
+
+            sentAt: emailAcceptedAt,
+
+            error: null,
           },
+        });
+
+        const updatedInvoice = await tx.billingInvoice.update({
+          where: {
+            id: invoice.id,
+          },
+
+          data: {
+            status: 'SENT',
+
+            sentAt: invoiceSentAt,
+
+            sentBy: user.userId,
+
+            dueDate: deliveryInvoice.dueDate,
+
+            scheduledSendAt: null,
+
+            scheduledToEmail: null,
+
+            scheduledBy: null,
+
+            scheduledAt: null,
+
+            updatedBy: user.userId,
+          },
+        });
+
+        return {
+          email,
+          updatedInvoice,
+        };
+      });
+
+      await this.audit(user, {
+        action: invoice.status === 'SENT' ? 'INVOICE_RESENT' : 'INVOICE_SENT',
+
+        invoiceId: invoice.id,
+
+        clientCode: invoice.clientCode,
+
+        details: `${
+          invoice.status === 'SENT' ? 'Resent' : 'Sent'
+        } ${invoice.invoiceNumber} to ${toEmail}`,
+
+        changes: {
+          toEmail,
+
+          ccEmails,
+
+          provider: 'POSTMARK',
+
+          providerMessageId: result.MessageID ?? null,
+
+          pdfChecksum: deliveryInvoice.pdfChecksum,
         },
-      );
+      });
 
       return {
-        invoiceId:
-          invoice.id,
+        invoiceId: invoice.id,
 
-        invoiceNumber:
-          invoice.invoiceNumber,
+        invoiceNumber: invoice.invoiceNumber,
 
-        status:
-          transactionResult.updatedInvoice.status,
+        status: transactionResult.updatedInvoice.status,
 
         toEmail,
 
@@ -731,33 +589,22 @@ If you have any questions regarding this invoice, please contact Omega BioChem L
 
         subject,
 
-        provider:
-          'POSTMARK',
+        provider: 'POSTMARK',
 
-        providerMessageId:
-          result.MessageID ??
-          null,
+        providerMessageId: result.MessageID ?? null,
 
-        sentAt:
-          invoiceSentAt,
+        sentAt: invoiceSentAt,
 
         emailAcceptedAt,
 
-        dueDate:
-          transactionResult.updatedInvoice.dueDate,
+        dueDate: transactionResult.updatedInvoice.dueDate,
 
-        emailHistoryId:
-          transactionResult.email.id,
+        emailHistoryId: transactionResult.email.id,
 
-        resent:
-          invoice.status ===
-          'SENT',
+        resent: invoice.status === 'SENT',
       };
     } catch (error: any) {
-      const errorText =
-        this.errorMessage(
-          error,
-        );
+      const errorText = this.errorMessage(error);
 
       /*
        * Record failed Postmark attempt.
@@ -768,8 +615,7 @@ If you have any questions regarding this invoice, please contact Omega BioChem L
       await this.prisma.billingInvoiceEmail
         .create({
           data: {
-            invoiceId:
-              invoice.id,
+            invoiceId: invoice.id,
 
             toEmail,
 
@@ -779,59 +625,40 @@ If you have any questions regarding this invoice, please contact Omega BioChem L
 
             messageBody,
 
-            status:
-              'FAILED',
+            status: 'FAILED',
 
-            provider:
-              'POSTMARK',
+            provider: 'POSTMARK',
 
-            providerMessageId:
-              null,
+            providerMessageId: null,
 
-            sentBy:
-              user.userId,
+            sentBy: user.userId,
 
-            sentAt:
-              null,
+            sentAt: null,
 
-            error:
-              errorText,
+            error: errorText,
           },
         })
         .catch(() => undefined);
 
-      await this.audit(
-        user,
-        {
-          action:
-            'INVOICE_EMAIL_FAILED',
+      await this.audit(user, {
+        action: 'INVOICE_EMAIL_FAILED',
 
-          invoiceId:
-            invoice.id,
+        invoiceId: invoice.id,
 
-          clientCode:
-            invoice.clientCode,
+        clientCode: invoice.clientCode,
 
-          details:
-            `Failed to send ${invoice.invoiceNumber} to ${toEmail}`,
+        details: `Failed to send ${invoice.invoiceNumber} to ${toEmail}`,
 
-          changes: {
-            toEmail,
+        changes: {
+          toEmail,
 
-            ccEmails,
+          ccEmails,
 
-            error:
-              errorText,
-          },
+          error: errorText,
         },
-      ).catch(
-        () =>
-          undefined,
-      );
+      }).catch(() => undefined);
 
-      throw new BadRequestException(
-        `Invoice email failed: ${errorText}`,
-      );
+      throw new BadRequestException(`Invoice email failed: ${errorText}`);
     }
   }
 }

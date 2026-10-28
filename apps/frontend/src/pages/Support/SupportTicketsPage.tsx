@@ -1,11 +1,8 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "../../lib/api";
+import TestingInquiriesPanel from "../Home/TestingInquiriesPanel";
+
 
 type UserSummary = {
   id: string;
@@ -18,12 +15,7 @@ type TicketActivity = {
   id: string;
   createdAt: string;
 
-  type:
-    | "CREATED"
-    | "STATUS_CHANGED"
-    | "ASSIGNED"
-    | "UNASSIGNED"
-    | "NOTE";
+  type: "CREATED" | "STATUS_CHANGED" | "ASSIGNED" | "UNASSIGNED" | "NOTE";
 
   message?: string | null;
 
@@ -77,11 +69,7 @@ type TicketsResponse = {
   };
 };
 
-type Status =
-  | "OPEN"
-  | "IN_PROGRESS"
-  | "RESOLVED"
-  | "CLOSED";
+type Status = "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED";
 
 const CATEGORY_OPTIONS = [
   "All",
@@ -102,11 +90,7 @@ const STATUS_OPTIONS: Array<"All" | Status> = [
   "CLOSED",
 ];
 
-function cn(
-  ...values: Array<
-    string | false | null | undefined
-  >
-) {
+function cn(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
@@ -131,11 +115,7 @@ function dateTime(value?: string | null) {
   return d.toLocaleString();
 }
 
-function StatusBadge({
-  status,
-}: {
-  status?: string | null;
-}) {
+function StatusBadge({ status }: { status?: string | null }) {
   const current = status ?? "OPEN";
 
   return (
@@ -143,8 +123,7 @@ function StatusBadge({
       className={cn(
         "inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset",
 
-        current === "OPEN" &&
-          "bg-blue-50 text-blue-700 ring-blue-200",
+        current === "OPEN" && "bg-blue-50 text-blue-700 ring-blue-200",
 
         current === "IN_PROGRESS" &&
           "bg-amber-50 text-amber-700 ring-amber-200",
@@ -152,8 +131,7 @@ function StatusBadge({
         current === "RESOLVED" &&
           "bg-emerald-50 text-emerald-700 ring-emerald-200",
 
-        current === "CLOSED" &&
-          "bg-slate-100 text-slate-700 ring-slate-200",
+        current === "CLOSED" && "bg-slate-100 text-slate-700 ring-slate-200",
       )}
     >
       {friendly(current)}
@@ -217,70 +195,48 @@ function SummaryCard({
         {label}
       </div>
 
-      <div className="mt-2 text-2xl font-bold text-slate-900">
-        {count}
-      </div>
+      <div className="mt-2 text-2xl font-bold text-slate-900">{count}</div>
     </button>
   );
 }
 
-export default function SupportTicketsPage() {
+function SupportTicketsContent() {
   const [q, setQ] = useState("");
-  const [debouncedQ, setDebouncedQ] =
-    useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
 
-  const [category, setCategory] =
-    useState<string>("All");
+  const [category, setCategory] = useState<string>("All");
 
-  const [status, setStatus] =
-    useState<string>("All");
+  const [status, setStatus] = useState<string>("All");
 
-  const [page, setPage] =
-    useState(1);
+  const [page, setPage] = useState(1);
 
-  const [busy, setBusy] =
-    useState(false);
+  const [busy, setBusy] = useState(false);
 
-  const [err, setErr] =
-    useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
-  const [data, setData] =
-    useState<TicketsResponse | null>(null);
+  const [data, setData] = useState<TicketsResponse | null>(null);
 
-  const [selectedId, setSelectedId] =
-    useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const [selected, setSelected] =
-    useState<Ticket | null>(null);
+  const [selected, setSelected] = useState<Ticket | null>(null);
 
-  const [detailBusy, setDetailBusy] =
-    useState(false);
+  const [detailBusy, setDetailBusy] = useState(false);
 
-  const [actionBusy, setActionBusy] =
-    useState(false);
+  const [actionBusy, setActionBusy] = useState(false);
 
-  const [actionError, setActionError] =
-    useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const [assignees, setAssignees] =
-    useState<UserSummary[]>([]);
+  const [assignees, setAssignees] = useState<UserSummary[]>([]);
 
-  const [statusDraft, setStatusDraft] =
-    useState<Status>("OPEN");
+  const [statusDraft, setStatusDraft] = useState<Status>("OPEN");
 
-  const [assigneeDraft, setAssigneeDraft] =
-    useState("");
+  const [assigneeDraft, setAssigneeDraft] = useState("");
 
-  const [note, setNote] =
-    useState("");
+  const [note, setNote] = useState("");
 
-  const [copied, setCopied] =
-    useState(false);
+  const [copied, setCopied] = useState(false);
 
-  const categories = useMemo(
-    () => CATEGORY_OPTIONS,
-    [],
-  );
+  const categories = useMemo(() => CATEGORY_OPTIONS, []);
 
   /*
    * Search debounce.
@@ -300,140 +256,85 @@ export default function SupportTicketsPage() {
     };
   }, [q]);
 
-  const loadTickets = useCallback(
-    async () => {
-      setBusy(true);
-      setErr(null);
+  const loadTickets = useCallback(async () => {
+    setBusy(true);
+    setErr(null);
 
-      try {
-        const params =
-          new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
 
-        if (debouncedQ) {
-          params.set(
-            "q",
-            debouncedQ,
-          );
-        }
-
-        if (category !== "All") {
-          params.set(
-            "category",
-            category,
-          );
-        }
-
-        if (status !== "All") {
-          params.set(
-            "status",
-            status,
-          );
-        }
-
-        params.set(
-          "page",
-          String(page),
-        );
-
-        params.set(
-          "pageSize",
-          "20",
-        );
-
-        const result =
-          await api<TicketsResponse>(
-            `/support/tickets?${params.toString()}`,
-          );
-
-        setData(result);
-      } catch (e: any) {
-        setErr(
-          e?.message ||
-            "Failed to load support tickets.",
-        );
-      } finally {
-        setBusy(false);
+      if (debouncedQ) {
+        params.set("q", debouncedQ);
       }
-    },
-    [
-      debouncedQ,
-      category,
-      status,
-      page,
-    ],
-  );
+
+      if (category !== "All") {
+        params.set("category", category);
+      }
+
+      if (status !== "All") {
+        params.set("status", status);
+      }
+
+      params.set("page", String(page));
+
+      params.set("pageSize", "20");
+
+      const result = await api<TicketsResponse>(
+        `/support/tickets?${params.toString()}`,
+      );
+
+      setData(result);
+    } catch (e: any) {
+      setErr(e?.message || "Failed to load support tickets.");
+    } finally {
+      setBusy(false);
+    }
+  }, [debouncedQ, category, status, page]);
 
   useEffect(() => {
     loadTickets();
   }, [loadTickets]);
 
   useEffect(() => {
-    const loadAssignees =
-      async () => {
-        try {
-          const result =
-            await api<UserSummary[]>(
-              "/support/assignees",
-            );
+    const loadAssignees = async () => {
+      try {
+        const result = await api<UserSummary[]>("/support/assignees");
 
-          setAssignees(
-            Array.isArray(result)
-              ? result
-              : [],
-          );
-        } catch {
-          setAssignees([]);
-        }
-      };
+        setAssignees(Array.isArray(result) ? result : []);
+      } catch {
+        setAssignees([]);
+      }
+    };
 
     loadAssignees();
   }, []);
 
-  const loadTicket = useCallback(
-    async (id: string) => {
-      setDetailBusy(true);
-      setActionError(null);
+  const loadTicket = useCallback(async (id: string) => {
+    setDetailBusy(true);
+    setActionError(null);
 
-      try {
-        const ticket =
-          await api<Ticket>(
-            `/support/tickets/${id}`,
-          );
+    try {
+      const ticket = await api<Ticket>(`/support/tickets/${id}`);
 
-        setSelected(ticket);
+      setSelected(ticket);
 
-        setStatusDraft(
-          (ticket.status || "OPEN") as Status,
-        );
+      setStatusDraft((ticket.status || "OPEN") as Status);
 
-        setAssigneeDraft(
-          ticket.assignedTo?.id ?? "",
-        );
-      } catch (e: any) {
-        setActionError(
-          e?.message ||
-            "Failed to load ticket.",
-        );
-      } finally {
-        setDetailBusy(false);
-      }
-    },
-    [],
-  );
+      setAssigneeDraft(ticket.assignedTo?.id ?? "");
+    } catch (e: any) {
+      setActionError(e?.message || "Failed to load ticket.");
+    } finally {
+      setDetailBusy(false);
+    }
+  }, []);
 
-  const openTicket = (
-    ticket: Ticket,
-  ) => {
+  const openTicket = (ticket: Ticket) => {
     setSelectedId(ticket.id);
     setSelected(ticket);
 
-    setStatusDraft(
-      (ticket.status || "OPEN") as Status,
-    );
+    setStatusDraft((ticket.status || "OPEN") as Status);
 
-    setAssigneeDraft(
-      ticket.assignedTo?.id ?? "",
-    );
+    setAssigneeDraft(ticket.assignedTo?.id ?? "");
 
     setNote("");
     setActionError(null);
@@ -441,123 +342,100 @@ export default function SupportTicketsPage() {
     loadTicket(ticket.id);
   };
 
-  const refreshSelected =
-    async () => {
-      if (!selectedId) return;
+  const refreshSelected = async () => {
+    if (!selectedId) return;
 
-      await loadTicket(selectedId);
-    };
+    await loadTicket(selectedId);
+  };
 
-  const updateStatus =
-    async () => {
-      if (!selectedId) return;
+  const updateStatus = async () => {
+    if (!selectedId) return;
 
-      setActionBusy(true);
-      setActionError(null);
+    setActionBusy(true);
+    setActionError(null);
 
-      try {
-        const result =
-          await api<Ticket>(
-            `/support/tickets/${selectedId}/status`,
-            {
-              method: "PATCH",
+    try {
+      const result = await api<Ticket>(
+        `/support/tickets/${selectedId}/status`,
+        {
+          method: "PATCH",
 
-              body: JSON.stringify({
-                status: statusDraft,
-              }),
-            },
-          );
+          body: JSON.stringify({
+            status: statusDraft,
+          }),
+        },
+      );
 
-        setSelected(result);
+      setSelected(result);
 
-        await loadTickets();
-      } catch (e: any) {
-        setActionError(
-          e?.message ||
-            "Failed to update status.",
-        );
-      } finally {
-        setActionBusy(false);
-      }
-    };
+      await loadTickets();
+    } catch (e: any) {
+      setActionError(e?.message || "Failed to update status.");
+    } finally {
+      setActionBusy(false);
+    }
+  };
 
-  const updateAssignee =
-    async () => {
-      if (!selectedId) return;
+  const updateAssignee = async () => {
+    if (!selectedId) return;
 
-      setActionBusy(true);
-      setActionError(null);
+    setActionBusy(true);
+    setActionError(null);
 
-      try {
-        const result =
-          await api<Ticket>(
-            `/support/tickets/${selectedId}/assign`,
-            {
-              method: "PATCH",
+    try {
+      const result = await api<Ticket>(
+        `/support/tickets/${selectedId}/assign`,
+        {
+          method: "PATCH",
 
-              body: JSON.stringify({
-                assignedToId:
-                  assigneeDraft || null,
-              }),
-            },
-          );
+          body: JSON.stringify({
+            assignedToId: assigneeDraft || null,
+          }),
+        },
+      );
 
-        setSelected(result);
+      setSelected(result);
 
-        await loadTickets();
-      } catch (e: any) {
-        setActionError(
-          e?.message ||
-            "Failed to update assignment.",
-        );
-      } finally {
-        setActionBusy(false);
-      }
-    };
+      await loadTickets();
+    } catch (e: any) {
+      setActionError(e?.message || "Failed to update assignment.");
+    } finally {
+      setActionBusy(false);
+    }
+  };
 
-  const addNote =
-    async () => {
-      if (!selectedId) return;
+  const addNote = async () => {
+    if (!selectedId) return;
 
-      const message =
-        note.trim();
+    const message = note.trim();
 
-      if (!message) {
-        setActionError(
-          "Enter a note first.",
-        );
-        return;
-      }
+    if (!message) {
+      setActionError("Enter a note first.");
+      return;
+    }
 
-      setActionBusy(true);
-      setActionError(null);
+    setActionBusy(true);
+    setActionError(null);
 
-      try {
-        const result =
-          await api<Ticket>(
-            `/support/tickets/${selectedId}/notes`,
-            {
-              method: "POST",
+    try {
+      const result = await api<Ticket>(`/support/tickets/${selectedId}/notes`, {
+        method: "POST",
 
-              body: JSON.stringify({
-                message,
-              }),
-            },
-          );
+        body: JSON.stringify({
+          message,
+        }),
+      });
 
-        setSelected(result);
-        setNote("");
+      setSelected(result);
+      setNote("");
 
-        await loadTickets();
-      } catch (e: any) {
-        setActionError(
-          e?.message ||
-            "Failed to add note.",
-        );
-      } finally {
-        setActionBusy(false);
-      }
-    };
+      await loadTickets();
+    } catch (e: any) {
+      setActionError(e?.message || "Failed to add note.");
+    } finally {
+      setActionBusy(false);
+    }
+  };
 
   const clearFilters = () => {
     setQ("");
@@ -567,33 +445,26 @@ export default function SupportTicketsPage() {
     setPage(1);
   };
 
-  const copyTicketId =
-    async () => {
-      if (!selected?.id) return;
+  const copyTicketId = async () => {
+    if (!selected?.id) return;
 
-      try {
-        await navigator.clipboard.writeText(
-          selected.id,
-        );
+    try {
+      await navigator.clipboard.writeText(selected.id);
 
-        setCopied(true);
+      setCopied(true);
 
-        window.setTimeout(
-          () => setCopied(false),
-          1200,
-        );
-      } catch {
-        // clipboard unavailable
-      }
-    };
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // clipboard unavailable
+    }
+  };
 
-  const counts =
-    data?.counts ?? {
-      OPEN: 0,
-      IN_PROGRESS: 0,
-      RESOLVED: 0,
-      CLOSED: 0,
-    };
+  const counts = data?.counts ?? {
+    OPEN: 0,
+    IN_PROGRESS: 0,
+    RESOLVED: 0,
+    CLOSED: 0,
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -608,9 +479,7 @@ export default function SupportTicketsPage() {
               </h1>
 
               <p className="mt-1 text-sm text-slate-600">
-                Review, assign, track,
-                and resolve Omega LIMS
-                support requests.
+                Review, assign, track, and resolve Omega LIMS support requests.
               </p>
             </div>
 
@@ -618,11 +487,7 @@ export default function SupportTicketsPage() {
               <div className="relative w-full lg:w-[430px]">
                 <input
                   value={q}
-                  onChange={(e) =>
-                    setQ(
-                      e.target.value,
-                    )
-                  }
+                  onChange={(e) => setQ(e.target.value)}
                   placeholder="Search ticket, user, report, description..."
                   className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 pr-16 text-sm text-slate-900 shadow-sm outline-none focus:border-[var(--brand)] focus:ring-4 focus:ring-[var(--brand)]/10"
                 />
@@ -630,9 +495,7 @@ export default function SupportTicketsPage() {
                 {q && (
                   <button
                     type="button"
-                    onClick={() =>
-                      setQ("")
-                    }
+                    onClick={() => setQ("")}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-500 hover:text-slate-900"
                   >
                     Clear
@@ -663,9 +526,7 @@ export default function SupportTicketsPage() {
             <SummaryCard
               label="Open"
               count={counts.OPEN}
-              selected={
-                status === "OPEN"
-              }
+              selected={status === "OPEN"}
               onClick={() => {
                 setStatus("OPEN");
                 setPage(1);
@@ -674,33 +535,20 @@ export default function SupportTicketsPage() {
 
             <SummaryCard
               label="In Progress"
-              count={
-                counts.IN_PROGRESS
-              }
-              selected={
-                status ===
-                "IN_PROGRESS"
-              }
+              count={counts.IN_PROGRESS}
+              selected={status === "IN_PROGRESS"}
               onClick={() => {
-                setStatus(
-                  "IN_PROGRESS",
-                );
+                setStatus("IN_PROGRESS");
                 setPage(1);
               }}
             />
 
             <SummaryCard
               label="Resolved"
-              count={
-                counts.RESOLVED
-              }
-              selected={
-                status === "RESOLVED"
-              }
+              count={counts.RESOLVED}
+              selected={status === "RESOLVED"}
               onClick={() => {
-                setStatus(
-                  "RESOLVED",
-                );
+                setStatus("RESOLVED");
                 setPage(1);
               }}
             />
@@ -708,9 +556,7 @@ export default function SupportTicketsPage() {
             <SummaryCard
               label="Closed"
               count={counts.CLOSED}
-              selected={
-                status === "CLOSED"
-              }
+              selected={status === "CLOSED"}
               onClick={() => {
                 setStatus("CLOSED");
                 setPage(1);
@@ -726,30 +572,19 @@ export default function SupportTicketsPage() {
                 Category
               </span>
 
-              {categories.map(
-                (item) => (
-                  <FilterChip
-                    key={item}
-                    active={
-                      category ===
-                      item
-                    }
-                    onClick={() => {
-                      setCategory(
-                        item,
-                      );
+              {categories.map((item) => (
+                <FilterChip
+                  key={item}
+                  active={category === item}
+                  onClick={() => {
+                    setCategory(item);
 
-                      setPage(1);
-                    }}
-                  >
-                    {item === "All"
-                      ? "All"
-                      : friendly(
-                          item,
-                        )}
-                  </FilterChip>
-                ),
-              )}
+                    setPage(1);
+                  }}
+                >
+                  {item === "All" ? "All" : friendly(item)}
+                </FilterChip>
+              ))}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -757,40 +592,24 @@ export default function SupportTicketsPage() {
                 Status
               </span>
 
-              {STATUS_OPTIONS.map(
-                (item) => (
-                  <FilterChip
-                    key={item}
-                    active={
-                      status === item
-                    }
-                    onClick={() => {
-                      setStatus(
-                        item,
-                      );
+              {STATUS_OPTIONS.map((item) => (
+                <FilterChip
+                  key={item}
+                  active={status === item}
+                  onClick={() => {
+                    setStatus(item);
 
-                      setPage(1);
-                    }}
-                  >
-                    {item === "All"
-                      ? "All"
-                      : friendly(
-                          item,
-                        )}
-                  </FilterChip>
-                ),
-              )}
+                    setPage(1);
+                  }}
+                >
+                  {item === "All" ? "All" : friendly(item)}
+                </FilterChip>
+              ))}
 
-              {(q ||
-                category !==
-                  "All" ||
-                status !==
-                  "All") && (
+              {(q || category !== "All" || status !== "All") && (
                 <button
                   type="button"
-                  onClick={
-                    clearFilters
-                  }
+                  onClick={clearFilters}
                   className="ml-1 text-xs font-semibold text-[var(--brand)] hover:underline"
                 >
                   Reset filters
@@ -814,17 +633,12 @@ export default function SupportTicketsPage() {
                   {busy
                     ? "Loading tickets..."
                     : `${data?.total ?? 0} ticket${
-                        (data?.total ??
-                          0) === 1
-                          ? ""
-                          : "s"
+                        (data?.total ?? 0) === 1 ? "" : "s"
                       }`}
                 </div>
 
                 <div className="mt-0.5 text-xs text-slate-500">
-                  Select a row to
-                  review the full
-                  ticket.
+                  Select a row to review the full ticket.
                 </div>
               </div>
             </div>
@@ -870,202 +684,130 @@ export default function SupportTicketsPage() {
                 </thead>
 
                 <tbody className="divide-y divide-slate-100">
-                  {(data?.items ??
-                    []).map(
-                    (ticket) => {
-                      const active =
-                        selectedId ===
-                        ticket.id;
+                  {(data?.items ?? []).map((ticket) => {
+                    const active = selectedId === ticket.id;
 
-                      return (
-                        <tr
-                          key={
-                            ticket.id
-                          }
-                          onClick={() =>
-                            openTicket(
-                              ticket,
-                            )
-                          }
-                          className={cn(
-                            "cursor-pointer transition",
+                    return (
+                      <tr
+                        key={ticket.id}
+                        onClick={() => openTicket(ticket)}
+                        className={cn(
+                          "cursor-pointer transition",
 
-                            active
-                              ? "bg-blue-50/70"
-                              : "hover:bg-slate-50",
-                          )}
-                        >
-                          <td className="px-4 py-3 align-top">
-                            <div className="max-w-[220px]">
-                              <div className="truncate font-semibold text-slate-900">
-                                {
-                                  ticket.id
-                                }
-                              </div>
-
-                              <div className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
-                                {
-                                  ticket.description
-                                }
-                              </div>
+                          active ? "bg-blue-50/70" : "hover:bg-slate-50",
+                        )}
+                      >
+                        <td className="px-4 py-3 align-top">
+                          <div className="max-w-[220px]">
+                            <div className="truncate font-semibold text-slate-900">
+                              {ticket.id}
                             </div>
-                          </td>
 
-                          <td className="px-4 py-3 align-top text-slate-700">
-                            {friendly(
-                              ticket.category,
-                            )}
-                          </td>
-
-                          <td className="px-4 py-3 align-top">
-                            <StatusBadge
-                              status={
-                                ticket.status
-                              }
-                            />
-                          </td>
-
-                          <td className="px-4 py-3 align-top">
-                            {ticket.createdBy ? (
-                              <div>
-                                <div className="font-medium text-slate-900">
-                                  {ticket
-                                    .createdBy
-                                    .name ||
-                                    "User"}
-                                </div>
-
-                                <div className="mt-0.5 text-xs text-slate-500">
-                                  {
-                                    ticket
-                                      .createdBy
-                                      .email
-                                  }
-                                </div>
-
-                                <div className="mt-0.5 text-[11px] text-slate-400">
-                                  {friendly(
-                                    ticket
-                                      .createdBy
-                                      .role,
-                                  )}
-                                </div>
-                              </div>
-                            ) : (
-                              "—"
-                            )}
-                          </td>
-
-                          <td className="px-4 py-3 align-top">
-                            {ticket.assignedTo ? (
-                              <div>
-                                <div className="font-medium text-slate-900">
-                                  {ticket
-                                    .assignedTo
-                                    .name ||
-                                    ticket
-                                      .assignedTo
-                                      .email}
-                                </div>
-
-                                <div className="mt-0.5 text-xs text-slate-500">
-                                  {friendly(
-                                    ticket
-                                      .assignedTo
-                                      .role,
-                                  )}
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-slate-400">
-                                Unassigned
-                              </span>
-                            )}
-                          </td>
-
-                          <td className="px-4 py-3 align-top">
-                            {ticket.reportId ? (
-                              <div>
-                                <div className="font-medium text-slate-800">
-                                  {
-                                    ticket.reportId
-                                  }
-                                </div>
-
-                                {ticket.reportType && (
-                                  <div className="mt-0.5 text-xs text-slate-500">
-                                    {friendly(
-                                      ticket.reportType,
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-slate-400">
-                                —
-                              </span>
-                            )}
-                          </td>
-
-                          <td className="whitespace-nowrap px-4 py-3 align-top text-xs text-slate-600">
-                            {dateTime(
-                              ticket.createdAt,
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    },
-                  )}
-
-                  {!busy &&
-                    (data?.items
-                      ?.length ??
-                      0) === 0 && (
-                      <tr>
-                        <td
-                          colSpan={
-                            7
-                          }
-                          className="px-6 py-14 text-center"
-                        >
-                          <div className="font-medium text-slate-700">
-                            No support
-                            tickets found
-                          </div>
-
-                          <div className="mt-1 text-sm text-slate-500">
-                            Try changing
-                            your search or
-                            filters.
+                            <div className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
+                              {ticket.description}
+                            </div>
                           </div>
                         </td>
+
+                        <td className="px-4 py-3 align-top text-slate-700">
+                          {friendly(ticket.category)}
+                        </td>
+
+                        <td className="px-4 py-3 align-top">
+                          <StatusBadge status={ticket.status} />
+                        </td>
+
+                        <td className="px-4 py-3 align-top">
+                          {ticket.createdBy ? (
+                            <div>
+                              <div className="font-medium text-slate-900">
+                                {ticket.createdBy.name || "User"}
+                              </div>
+
+                              <div className="mt-0.5 text-xs text-slate-500">
+                                {ticket.createdBy.email}
+                              </div>
+
+                              <div className="mt-0.5 text-[11px] text-slate-400">
+                                {friendly(ticket.createdBy.role)}
+                              </div>
+                            </div>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+
+                        <td className="px-4 py-3 align-top">
+                          {ticket.assignedTo ? (
+                            <div>
+                              <div className="font-medium text-slate-900">
+                                {ticket.assignedTo.name ||
+                                  ticket.assignedTo.email}
+                              </div>
+
+                              <div className="mt-0.5 text-xs text-slate-500">
+                                {friendly(ticket.assignedTo.role)}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400">
+                              Unassigned
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-3 align-top">
+                          {ticket.reportId ? (
+                            <div>
+                              <div className="font-medium text-slate-800">
+                                {ticket.reportId}
+                              </div>
+
+                              {ticket.reportType && (
+                                <div className="mt-0.5 text-xs text-slate-500">
+                                  {friendly(ticket.reportType)}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+
+                        <td className="whitespace-nowrap px-4 py-3 align-top text-xs text-slate-600">
+                          {dateTime(ticket.createdAt)}
+                        </td>
                       </tr>
-                    )}
+                    );
+                  })}
+
+                  {!busy && (data?.items?.length ?? 0) === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-14 text-center">
+                        <div className="font-medium text-slate-700">
+                          No support tickets found
+                        </div>
+
+                        <div className="mt-1 text-sm text-slate-500">
+                          Try changing your search or filters.
+                        </div>
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
 
             <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3">
               <div className="text-xs text-slate-500">
-                Page {page} of{" "}
-                {data?.totalPages ??
-                  1}
+                Page {page} of {data?.totalPages ?? 1}
               </div>
 
               <div className="flex gap-2">
                 <button
                   type="button"
-                  disabled={
-                    busy || page <= 1
-                  }
-                  onClick={() =>
-                    setPage((p) =>
-                      Math.max(
-                        1,
-                        p - 1,
-                      ),
-                    )
-                  }
+                  disabled={busy || page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
                   className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Previous
@@ -1073,17 +815,8 @@ export default function SupportTicketsPage() {
 
                 <button
                   type="button"
-                  disabled={
-                    busy ||
-                    page >=
-                      (data?.totalPages ??
-                        1)
-                  }
-                  onClick={() =>
-                    setPage(
-                      (p) => p + 1,
-                    )
-                  }
+                  disabled={busy || page >= (data?.totalPages ?? 1)}
+                  onClick={() => setPage((p) => p + 1)}
                   className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Next
@@ -1106,9 +839,7 @@ export default function SupportTicketsPage() {
                     </div>
 
                     <div className="mt-1 text-xs text-slate-500">
-                      Manage status,
-                      assignment and
-                      internal notes.
+                      Manage status, assignment and internal notes.
                     </div>
                   </div>
 
@@ -1116,16 +847,10 @@ export default function SupportTicketsPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        setSelectedId(
-                          null,
-                        );
-                        setSelected(
-                          null,
-                        );
+                        setSelectedId(null);
+                        setSelected(null);
                         setNote("");
-                        setActionError(
-                          null,
-                        );
+                        setActionError(null);
                       }}
                       className="text-xs font-semibold text-slate-500 hover:text-slate-900"
                     >
@@ -1138,26 +863,20 @@ export default function SupportTicketsPage() {
               {!selectedId && (
                 <div className="px-5 py-14 text-center">
                   <div className="text-sm font-medium text-slate-700">
-                    No ticket
-                    selected
+                    No ticket selected
                   </div>
 
                   <p className="mt-1 text-xs leading-5 text-slate-500">
-                    Select a ticket
-                    from the table to
-                    review and manage
-                    it.
+                    Select a ticket from the table to review and manage it.
                   </p>
                 </div>
               )}
 
-              {selectedId &&
-                detailBusy &&
-                !selected && (
-                  <div className="px-5 py-12 text-center text-sm text-slate-500">
-                    Loading ticket...
-                  </div>
-                )}
+              {selectedId && detailBusy && !selected && (
+                <div className="px-5 py-12 text-center text-sm text-slate-500">
+                  Loading ticket...
+                </div>
+              )}
 
               {selected && (
                 <div className="max-h-[calc(100vh-9rem)] overflow-y-auto">
@@ -1172,37 +891,25 @@ export default function SupportTicketsPage() {
                           </div>
 
                           <div className="mt-1 break-all font-mono text-xs font-semibold text-slate-900">
-                            {
-                              selected.id
-                            }
+                            {selected.id}
                           </div>
                         </div>
 
                         <button
                           type="button"
-                          onClick={
-                            copyTicketId
-                          }
+                          onClick={copyTicketId}
                           className="shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                         >
-                          {copied
-                            ? "Copied"
-                            : "Copy"}
+                          {copied ? "Copied" : "Copy"}
                         </button>
                       </div>
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      <StatusBadge
-                        status={
-                          selected.status
-                        }
-                      />
+                      <StatusBadge status={selected.status} />
 
                       <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                        {friendly(
-                          selected.category,
-                        )}
+                        {friendly(selected.category)}
                       </span>
                     </div>
 
@@ -1213,9 +920,7 @@ export default function SupportTicketsPage() {
                         </div>
 
                         <div className="mt-1 text-xs text-slate-800">
-                          {dateTime(
-                            selected.createdAt,
-                          )}
+                          {dateTime(selected.createdAt)}
                         </div>
                       </div>
 
@@ -1225,9 +930,7 @@ export default function SupportTicketsPage() {
                         </div>
 
                         <div className="mt-1 text-xs text-slate-800">
-                          {dateTime(
-                            selected.updatedAt,
-                          )}
+                          {dateTime(selected.updatedAt)}
                         </div>
                       </div>
                     </div>
@@ -1239,31 +942,20 @@ export default function SupportTicketsPage() {
 
                       <div className="mt-1 rounded-xl bg-slate-50 p-3">
                         <div className="text-sm font-semibold text-slate-900">
-                          {selected
-                            .createdBy
-                            ?.name ||
-                            "User"}
+                          {selected.createdBy?.name || "User"}
                         </div>
 
                         <div className="mt-0.5 text-xs text-slate-600">
-                          {selected
-                            .createdBy
-                            ?.email ||
-                            "—"}
+                          {selected.createdBy?.email || "—"}
                         </div>
 
                         <div className="mt-1 text-[11px] font-medium text-slate-400">
-                          {friendly(
-                            selected
-                              .createdBy
-                              ?.role,
-                          )}
+                          {friendly(selected.createdBy?.role)}
                         </div>
                       </div>
                     </div>
 
-                    {(selected.reportId ||
-                      selected.reportType) && (
+                    {(selected.reportId || selected.reportType) && (
                       <div>
                         <div className="text-xs font-medium text-slate-500">
                           Related Report
@@ -1271,15 +963,12 @@ export default function SupportTicketsPage() {
 
                         <div className="mt-1 rounded-xl bg-slate-50 p-3 text-sm text-slate-800">
                           <div className="font-medium">
-                            {selected.reportId ||
-                              "—"}
+                            {selected.reportId || "—"}
                           </div>
 
                           {selected.reportType && (
                             <div className="mt-1 text-xs text-slate-500">
-                              {friendly(
-                                selected.reportType,
-                              )}
+                              {friendly(selected.reportType)}
                             </div>
                           )}
                         </div>
@@ -1292,17 +981,13 @@ export default function SupportTicketsPage() {
                       </div>
 
                       <div className="mt-1 whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-800">
-                        {
-                          selected.description
-                        }
+                        {selected.description}
                       </div>
                     </div>
 
                     {actionError && (
                       <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                        {
-                          actionError
-                        }
+                        {actionError}
                       </div>
                     )}
                   </div>
@@ -1322,50 +1007,28 @@ export default function SupportTicketsPage() {
 
                         <div className="mt-1 flex gap-2">
                           <select
-                            value={
-                              statusDraft
-                            }
-                            disabled={
-                              actionBusy
-                            }
-                            onChange={(
-                              e,
-                            ) =>
-                              setStatusDraft(
-                                e.target
-                                  .value as Status,
-                              )
+                            value={statusDraft}
+                            disabled={actionBusy}
+                            onChange={(e) =>
+                              setStatusDraft(e.target.value as Status)
                             }
                             className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[var(--brand)]"
                           >
-                            <option value="OPEN">
-                              Open
-                            </option>
+                            <option value="OPEN">Open</option>
 
-                            <option value="IN_PROGRESS">
-                              In
-                              Progress
-                            </option>
+                            <option value="IN_PROGRESS">In Progress</option>
 
-                            <option value="RESOLVED">
-                              Resolved
-                            </option>
+                            <option value="RESOLVED">Resolved</option>
 
-                            <option value="CLOSED">
-                              Closed
-                            </option>
+                            <option value="CLOSED">Closed</option>
                           </select>
 
                           <button
                             type="button"
                             disabled={
-                              actionBusy ||
-                              statusDraft ===
-                                selected.status
+                              actionBusy || statusDraft === selected.status
                             }
-                            onClick={
-                              updateStatus
-                            }
+                            onClick={updateStatus}
                             className="rounded-xl bg-[var(--brand)] px-3 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             Save
@@ -1375,68 +1038,33 @@ export default function SupportTicketsPage() {
 
                       <div>
                         <label className="text-xs font-semibold text-slate-600">
-                          Assigned
-                          To
+                          Assigned To
                         </label>
 
                         <div className="mt-1 flex gap-2">
                           <select
-                            value={
-                              assigneeDraft
-                            }
-                            disabled={
-                              actionBusy
-                            }
-                            onChange={(
-                              e,
-                            ) =>
-                              setAssigneeDraft(
-                                e.target
-                                  .value,
-                              )
-                            }
+                            value={assigneeDraft}
+                            disabled={actionBusy}
+                            onChange={(e) => setAssigneeDraft(e.target.value)}
                             className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[var(--brand)]"
                           >
-                            <option value="">
-                              Unassigned
-                            </option>
+                            <option value="">Unassigned</option>
 
-                            {assignees.map(
-                              (
-                                user,
-                              ) => (
-                                <option
-                                  key={
-                                    user.id
-                                  }
-                                  value={
-                                    user.id
-                                  }
-                                >
-                                  {user.name ||
-                                    user.email}{" "}
-                                  —{" "}
-                                  {friendly(
-                                    user.role,
-                                  )}
-                                </option>
-                              ),
-                            )}
+                            {assignees.map((user) => (
+                              <option key={user.id} value={user.id}>
+                                {user.name || user.email} —{" "}
+                                {friendly(user.role)}
+                              </option>
+                            ))}
                           </select>
 
                           <button
                             type="button"
                             disabled={
                               actionBusy ||
-                              assigneeDraft ===
-                                (selected
-                                  .assignedTo
-                                  ?.id ??
-                                  "")
+                              assigneeDraft === (selected.assignedTo?.id ?? "")
                             }
-                            onClick={
-                              updateAssignee
-                            }
+                            onClick={updateAssignee}
                             className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             Save
@@ -1446,48 +1074,29 @@ export default function SupportTicketsPage() {
 
                       <div>
                         <label className="text-xs font-semibold text-slate-600">
-                          Internal
-                          Note
+                          Internal Note
                         </label>
 
                         <textarea
                           value={note}
-                          disabled={
-                            actionBusy
-                          }
-                          onChange={(
-                            e,
-                          ) =>
-                            setNote(
-                              e.target
-                                .value,
-                            )
-                          }
+                          disabled={actionBusy}
+                          onChange={(e) => setNote(e.target.value)}
                           rows={3}
-                          maxLength={
-                            2000
-                          }
+                          maxLength={2000}
                           placeholder="Add investigation notes, follow-up information, or resolution details..."
                           className="mt-1 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[var(--brand)] focus:ring-4 focus:ring-[var(--brand)]/10"
                         />
 
                         <div className="mt-2 flex items-center justify-between">
                           <span className="text-[11px] text-slate-400">
-                            {
-                              note.length
-                            }
+                            {note.length}
                             /2000
                           </span>
 
                           <button
                             type="button"
-                            disabled={
-                              actionBusy ||
-                              !note.trim()
-                            }
-                            onClick={
-                              addNote
-                            }
+                            disabled={actionBusy || !note.trim()}
+                            onClick={addNote}
                             className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             Add Note
@@ -1502,32 +1111,27 @@ export default function SupportTicketsPage() {
                   <div className="border-t border-slate-200 p-5">
                     <details>
                       <summary className="cursor-pointer text-sm font-semibold text-slate-800">
-                        Technical
-                        Information
+                        Technical Information
                       </summary>
 
                       <div className="mt-4 space-y-3">
                         <div>
                           <div className="text-xs font-medium text-slate-500">
-                            Client
-                            Time
+                            Client Time
                           </div>
 
                           <div className="mt-1 break-words text-xs text-slate-700">
-                            {selected.clientTime ||
-                              "—"}
+                            {selected.clientTime || "—"}
                           </div>
                         </div>
 
                         <div>
                           <div className="text-xs font-medium text-slate-500">
-                            User
-                            Agent
+                            User Agent
                           </div>
 
                           <div className="mt-1 break-words rounded-lg bg-slate-50 p-2 font-mono text-[11px] leading-5 text-slate-600">
-                            {selected.userAgent ||
-                              "—"}
+                            {selected.userAgent || "—"}
                           </div>
                         </div>
 
@@ -1538,11 +1142,7 @@ export default function SupportTicketsPage() {
 
                           <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-900 p-3 text-[11px] leading-5 text-slate-100">
                             {selected.meta
-                              ? JSON.stringify(
-                                  selected.meta,
-                                  null,
-                                  2,
-                                )
+                              ? JSON.stringify(selected.meta, null, 2)
                               : "No metadata"}
                           </pre>
                         </div>
@@ -1555,15 +1155,12 @@ export default function SupportTicketsPage() {
                   <div className="border-t border-slate-200 p-5">
                     <div className="flex items-center justify-between">
                       <div className="text-sm font-semibold text-slate-900">
-                        Activity
-                        History
+                        Activity History
                       </div>
 
                       <button
                         type="button"
-                        onClick={
-                          refreshSelected
-                        }
+                        onClick={refreshSelected}
                         className="text-xs font-semibold text-[var(--brand)] hover:underline"
                       >
                         Refresh
@@ -1571,51 +1168,33 @@ export default function SupportTicketsPage() {
                     </div>
 
                     <div className="mt-4 space-y-4">
-                      {(selected.activities ??
-                        []).length ===
-                      0 ? (
+                      {(selected.activities ?? []).length === 0 ? (
                         <div className="text-xs text-slate-500">
-                          No activity
-                          history.
+                          No activity history.
                         </div>
                       ) : (
-                        selected.activities?.map(
-                          (
-                            activity,
-                          ) => (
-                            <div
-                              key={
-                                activity.id
-                              }
-                              className="relative border-l-2 border-slate-200 pl-4"
-                            >
-                              <span className="absolute -left-[5px] top-1 h-2 w-2 rounded-full bg-[var(--brand)]" />
+                        selected.activities?.map((activity) => (
+                          <div
+                            key={activity.id}
+                            className="relative border-l-2 border-slate-200 pl-4"
+                          >
+                            <span className="absolute -left-[5px] top-1 h-2 w-2 rounded-full bg-[var(--brand)]" />
 
-                              <div className="text-xs font-semibold text-slate-800">
-                                {activity
-                                  .actor
-                                  ?.name ||
-                                  activity
-                                    .actor
-                                    ?.email ||
-                                  "System"}
-                              </div>
-
-                              <div className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-600">
-                                {activity.message ||
-                                  friendly(
-                                    activity.type,
-                                  )}
-                              </div>
-
-                              <div className="mt-1 text-[11px] text-slate-400">
-                                {dateTime(
-                                  activity.createdAt,
-                                )}
-                              </div>
+                            <div className="text-xs font-semibold text-slate-800">
+                              {activity.actor?.name ||
+                                activity.actor?.email ||
+                                "System"}
                             </div>
-                          ),
-                        )
+
+                            <div className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-600">
+                              {activity.message || friendly(activity.type)}
+                            </div>
+
+                            <div className="mt-1 text-[11px] text-slate-400">
+                              {dateTime(activity.createdAt)}
+                            </div>
+                          </div>
+                        ))
                       )}
                     </div>
                   </div>
@@ -1624,6 +1203,56 @@ export default function SupportTicketsPage() {
             </div>
           </div>
         </aside>
+      </div>
+    </div>
+  );
+}
+
+export default function SupportTicketsPage() {
+  const [tab, setTab] = useState<"tickets" | "inquiries">("tickets");
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <div className="mx-auto max-w-7xl px-4 pt-5">
+        <div
+          className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm"
+          role="tablist"
+          aria-label="Support management"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "tickets"}
+            onClick={() => setTab("tickets")}
+            className={cn(
+              "rounded-xl px-5 py-3 text-sm font-semibold transition",
+              tab === "tickets"
+                ? "bg-[var(--brand)] text-white shadow-sm"
+                : "text-slate-600 hover:bg-slate-50",
+            )}
+          >
+            Support Tickets
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "inquiries"}
+            onClick={() => setTab("inquiries")}
+            className={cn(
+              "rounded-xl px-5 py-3 text-sm font-semibold transition",
+              tab === "inquiries"
+                ? "bg-[var(--brand)] text-white shadow-sm"
+                : "text-slate-600 hover:bg-slate-50",
+            )}
+          >
+            Testing Inquiries
+          </button>
+        </div>
+      </div>
+      <div role="tabpanel" hidden={tab !== "tickets"}>
+        {tab === "tickets" && <SupportTicketsContent />}
+      </div>
+      <div role="tabpanel" hidden={tab !== "inquiries"}>
+        {tab === "inquiries" && <TestingInquiriesPanel />}
       </div>
     </div>
   );
