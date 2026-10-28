@@ -8,6 +8,8 @@ import {
   CheckCircle2,
   CircleDollarSign,
   FileDown,
+  ChevronDown,
+  FileSpreadsheet,
   FileText,
   Mail,
   Pencil,
@@ -60,7 +62,7 @@ type BillingActionDialog =
   | { kind: "CONFIRM" }
   | { kind: "REOPEN" }
   | { kind: "REVISE" }
-  | { kind: "SEND"; toEmail: string }
+  | { kind: "SEND"; toEmail: string; sendPdf: boolean; sendExcel: boolean }
   | {
       kind: "SCHEDULE";
       toEmail: string;
@@ -1239,6 +1241,38 @@ function Button({
     >
       {children}
     </button>
+  );
+}
+
+function InvoiceFormatMenu({
+  label,
+  icon: LeadingIcon,
+  onPdf,
+  onExcel,
+  disabled,
+}: {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  onPdf: () => void;
+  onExcel: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="group relative inline-flex" onKeyDown={(event) => {
+      if (event.key === "Escape") (event.currentTarget.querySelector("button") as HTMLButtonElement | null)?.blur();
+    }}>
+      <button type="button" disabled={disabled}
+        aria-haspopup="menu"
+        className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:opacity-50">
+        <LeadingIcon className="h-4 w-4" />{label}<ChevronDown className="h-4 w-4" />
+      </button>
+      <div className="invisible absolute left-0 top-full z-50 min-w-[165px] pt-1 opacity-0 transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+        <div role="menu" className="overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+          <button role="menuitem" type="button" onClick={onPdf} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-100"><FileText className="h-4 w-4"/>PDF</button>
+          <button role="menuitem" type="button" onClick={onExcel} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-100"><FileSpreadsheet className="h-4 w-4 text-emerald-700"/>Excel</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -3241,6 +3275,32 @@ export default function BillingDashboard() {
     }
   }
 
+  async function openInvoiceExcel(invoiceId: string, invoiceNumber: string, mode: "VIEW" | "DOWNLOAD") {
+    const key = `${mode}_EXCEL`;
+    setWorking(key);
+    try {
+      const { blob, filename } = await apiBlob(`/billing/invoices/${invoiceId}/excel`);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename || `${invoiceNumber || "invoice"}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      if (mode === "VIEW") toast.success("Open the Excel file from your downloads to view it");
+    } catch (error: any) {
+      toast.error(extractMessage(error));
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  async function downloadExcel() {
+    if (!invoiceDetail) return;
+    await openInvoiceExcel(invoiceDetail.id, invoiceDetail.invoiceNumber || "invoice", "DOWNLOAD");
+  }
+
   async function viewInvoicePdfFromList(row: InvoiceRow) {
     if (!row.pdfFilename) {
       toast.error("This invoice does not have an official PDF yet");
@@ -3359,6 +3419,8 @@ export default function BillingDashboard() {
     setActionDialog({
       kind: "SEND",
       toEmail: invoiceDetail.billingEmail ?? "",
+      sendPdf: true,
+      sendExcel: true,
     });
   }
 
@@ -3375,12 +3437,17 @@ export default function BillingDashboard() {
       return;
     }
 
+    if (!actionDialog.sendPdf && !actionDialog.sendExcel) {
+      toast.error("Select PDF, Excel, or both");
+      return;
+    }
+
     const isResend = invoiceDetail.status === "SENT";
 
     setWorking("SEND");
 
     try {
-      await api(`/billing/invoices/${invoiceDetail.id}/send`, {
+      await api(`/billing/invoices/${invoiceDetail.id}/send?sendPdf=${actionDialog.sendPdf ? "1" : "0"}&sendExcel=${actionDialog.sendExcel ? "1" : "0"}`, {
         method: "POST",
         body: JSON.stringify({
           ...(toEmail ? { toEmail } : {}),
@@ -6322,22 +6389,15 @@ export default function BillingDashboard() {
                         </td>
                         <td className="px-4 py-3">
                           {row.pdfFilename ? (
-                            <Button
-                              variant="secondary"
-                              onClick={() => viewInvoicePdfFromList(row)}
-                              disabled={working === `VIEW_ROW_PDF:${row.id}`}
-                            >
-                              {working === `VIEW_ROW_PDF:${row.id}` ? (
-                                <Spinner dark />
-                              ) : (
-                                <FileText className="h-4 w-4" />
-                              )}
-                              View PDF
-                            </Button>
+                            <InvoiceFormatMenu
+                              label="View"
+                              icon={FileText}
+                              onPdf={() => viewInvoicePdfFromList(row)}
+                              onExcel={() => void openInvoiceExcel(row.id, row.invoiceNumber || "invoice", "VIEW")}
+                              disabled={working !== null}
+                            />
                           ) : (
-                            <span className="text-xs text-slate-400">
-                              Not generated
-                            </span>
+                            <span className="text-xs text-slate-400">Not generated</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
@@ -9555,31 +9615,20 @@ export default function BillingDashboard() {
 
                             {invoiceDetail.pdfFilename && (
                               <>
-                                <Button
-                                  variant="secondary"
-                                  onClick={() => getPdf("VIEW")}
-                                  disabled={working === "VIEW_PDF"}
-                                >
-                                  {working === "VIEW_PDF" ? (
-                                    <Spinner dark />
-                                  ) : (
-                                    <FileText className="h-4 w-4" />
-                                  )}
-                                  View PDF
-                                </Button>
-
-                                <Button
-                                  variant="secondary"
-                                  onClick={() => getPdf("DOWNLOAD")}
-                                  disabled={working === "DOWNLOAD_PDF"}
-                                >
-                                  {working === "DOWNLOAD_PDF" ? (
-                                    <Spinner dark />
-                                  ) : (
-                                    <FileDown className="h-4 w-4" />
-                                  )}
-                                  Download
-                                </Button>
+                                <InvoiceFormatMenu
+                                  label="View"
+                                  icon={FileText}
+                                  onPdf={() => void getPdf("VIEW")}
+                                  onExcel={() => void openInvoiceExcel(invoiceDetail.id, invoiceDetail.invoiceNumber || "invoice", "VIEW")}
+                                  disabled={working !== null}
+                                />
+                                <InvoiceFormatMenu
+                                  label="Download"
+                                  icon={FileDown}
+                                  onPdf={() => void getPdf("DOWNLOAD")}
+                                  onExcel={downloadExcel}
+                                  disabled={working !== null}
+                                />
                               </>
                             )}
 
@@ -10297,8 +10346,23 @@ export default function BillingDashboard() {
                       {invoiceDetail.invoiceNumber || "Invoice"}
                     </div>
                     <div className="mt-1 text-xs text-emerald-700">
-                      The official PDF will be attached to this email.
+                      Choose the attachments to include with this email.
                     </div>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <div className="mb-2 text-xs font-semibold text-slate-600">Attachment formats</div>
+                    <div className="flex flex-wrap gap-5">
+                      <label className="flex cursor-pointer items-center gap-2 text-sm">
+                        <input type="checkbox" checked={actionDialog.sendPdf} onChange={(e) => setActionDialog({ ...actionDialog, sendPdf: e.target.checked })} />
+                        <FileText className="h-4 w-4" />PDF
+                      </label>
+                      <label className="flex cursor-pointer items-center gap-2 text-sm">
+                        <input type="checkbox" checked={actionDialog.sendExcel} onChange={(e) => setActionDialog({ ...actionDialog, sendExcel: e.target.checked })} />
+                        <FileSpreadsheet className="h-4 w-4 text-emerald-700" />Excel
+                      </label>
+                    </div>
+                    {!actionDialog.sendPdf && !actionDialog.sendExcel && <p className="mt-2 text-xs text-rose-600">Select at least one format.</p>}
                   </div>
 
                   <label className="block">
@@ -10486,7 +10550,7 @@ export default function BillingDashboard() {
                 <Button
                   variant="success"
                   onClick={submitSendInvoice}
-                  disabled={working === "SEND"}
+                  disabled={working === "SEND" || (!actionDialog.sendPdf && !actionDialog.sendExcel)}
                 >
                   {working === "SEND" ? (
                     <Spinner />

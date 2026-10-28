@@ -25,6 +25,7 @@ import { BillingPricingService } from './billing-pricing.service';
 import { BillingService } from './billing.service';
 
 import { BillingPdfService } from './billing-pdf.service';
+import { BillingExcelService } from './billing-excel.service';
 
 import { BillingEmailService } from './billing-email.service';
 
@@ -56,6 +57,7 @@ export class BillingController {
     private readonly pricing: BillingPricingService,
 
     private readonly pdf: BillingPdfService,
+    private readonly excel: BillingExcelService,
 
     private readonly email: BillingEmailService,
 
@@ -732,6 +734,21 @@ export class BillingController {
 
   ========================================================= */
 
+  /* Excel export is generated from frozen invoice line items, without changing invoice status. */
+  @Get('invoices/:id/excel')
+  async downloadInvoiceExcel(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Param('id') id: string,
+  ) {
+    const result = await this.excel.generate((req as any).user, id);
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename.replace(/"/g, '')}"`);
+    res.setHeader('Content-Length', String(result.content.length));
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(result.content);
+  }
+
   @Post('invoices/:id/send')
   sendInvoice(
     @Req() req: Request,
@@ -739,8 +756,14 @@ export class BillingController {
     @Param('id') id: string,
 
     @Body() body: SendInvoiceDto,
+    @Query('sendPdf') sendPdf?: string,
+    @Query('sendExcel') sendExcel?: string,
   ) {
-    return this.email.sendInvoice((req as any).user, id, body);
+    return this.email.sendInvoice((req as any).user, id, {
+      ...body,
+      sendPdf: sendPdf !== '0' && sendPdf !== 'false',
+      sendExcel: sendExcel !== '0' && sendExcel !== 'false',
+    });
   }
 
   /* =========================================================
