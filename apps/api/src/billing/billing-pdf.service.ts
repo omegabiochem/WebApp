@@ -73,6 +73,23 @@ const BILLING_TIME_ZONE = process.env.BILLING_TIME_ZONE || 'America/New_York';
 const PREVIOUS_MONTH_MANUAL_PREFIX = 'Previous Month Pending: ';
 const CUSTOM_CHARGE_PREFIX = 'Custom Charge: ';
 
+/** Client-facing name only; keep stored legacy IDs for internal tracking. */
+function displayPreviousMonthCharge(value: unknown): string {
+  const description = String(value ?? '')
+    .replace(/^Previous Month Pending:\s*/i, '')
+    .trim();
+
+  const oldOutstanding =
+    /^Outstanding Invoice \[[^\]]+\]\s+(INV-[A-Za-z0-9-]+)\s*-\s*unpaid balance$/i.exec(
+      description,
+    );
+  if (oldOutstanding) {
+    return `Previous Month Outstanding Balance – Invoice ${oldOutstanding[1]}`;
+  }
+
+  return description || 'Previous-month pending charge';
+}
+
 /*
 
  * Invoice letterhead.
@@ -2284,10 +2301,7 @@ export class BillingPdfService {
         y -= 22;
 
         for (const line of previousMonthManualLines) {
-          const description =
-            String(line.description ?? '')
-              .replace(PREVIOUS_MONTH_MANUAL_PREFIX, '')
-              .trim() || 'Previous-month pending charge';
+          const description = displayPreviousMonthCharge(line.description);
           const descriptionLines = this.wrapText(description, 70);
           const rowHeight = Math.max(22, 9 + descriptionLines.length * 9);
 

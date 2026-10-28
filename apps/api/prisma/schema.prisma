@@ -713,7 +713,6 @@ enum FormType {
   COA
 }
 
-
 enum ApeReportResult {
   PASS
   FAIL
@@ -1295,7 +1294,7 @@ model ApeReportDetails {
 
   footerRevNo         String?
   footerDateEffective DateTime?
-  result ApeReportResult @default(PASS)
+  result              ApeReportResult @default(PASS)
 
   report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
 }
@@ -1521,6 +1520,7 @@ model BillingInvoice {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  payments     BillingInvoicePayment[]
   lines        BillingInvoiceLine[]
   emails       BillingInvoiceEmail[]
   extraCharges BillingInvoiceExtraCharge[]
@@ -1558,6 +1558,34 @@ model BillingInvoice {
   // Important for scheduled invoice sender
   @@index([scheduledSendAt])
   @@index([status, scheduledSendAt])
+}
+
+enum BillingPaymentMethod {
+  ACH
+  CHECK
+  WIRE
+  CASH
+  CARD
+  OTHER
+}
+
+model BillingInvoicePayment {
+  id             String               @id @default(cuid())
+  invoiceId      String
+  invoice        BillingInvoice       @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  amount         Decimal              @db.Decimal(12, 2)
+  paidAt         DateTime
+  method         BillingPaymentMethod
+  reference      String?
+  notes          String?
+  recordedBy     String
+  createdAt      DateTime             @default(now())
+  reversedAt     DateTime?
+  reversedBy     String?
+  reversalReason String?
+
+  @@index([invoiceId, createdAt])
+  @@index([invoiceId, reversedAt])
 }
 
 model BillingManualInvoiceLine {
@@ -1951,4 +1979,45 @@ model WorkflowReminder {
   @@index([clientCode])
   @@index([expectedStatus])
   @@index([claimedAt])
+}
+
+enum TestingInquiryStatus {
+  NEW
+  CONTACTED
+  QUOTED
+  CONVERTED
+  CLOSED
+}
+
+enum TestingInquiryEmailStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model TestingInquiry {
+  id           String                    @id @default(cuid())
+  reference    String                    @unique
+  companyName  String
+  contactName  String
+  email        String
+  phone        String?
+  testingTypes String[]                  @default([])
+  productType  String?
+  sampleCount  Int?
+  requirements String
+  turnaround   String
+  consent      Boolean
+  status       TestingInquiryStatus      @default(NEW)
+  emailStatus  TestingInquiryEmailStatus @default(PENDING)
+  emailError   String?
+  emailedAt    DateTime?
+  // Hashed server-side to support public rate limits without storing raw IP.
+  ipHash       String?
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([ipHash, createdAt])
 }

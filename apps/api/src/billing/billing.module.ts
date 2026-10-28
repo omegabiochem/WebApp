@@ -5,11 +5,13 @@ import { BillingController } from './billing.controller';
 import { BillingPricingService } from './billing-pricing.service';
 import { BillingService } from './billing.service';
 import { BillingPdfService } from './billing-pdf.service';
+
+import { BillingExcelService } from './billing-excel.service';
 import { MailModule } from 'src/mail/mail.module';
 import { BillingEmailService } from './billing-email.service';
+import { BillingPaymentService } from './billing-payment.service';
 import { BillingSchedulerService } from './billing-scheduler.service';
 import { BillingBackfillService } from './billing-backfill.service';
-import { BillingExcelService } from './billing-excel.service';
 
 @Module({
   imports: [MailModule],
@@ -24,6 +26,7 @@ import { BillingExcelService } from './billing-excel.service';
     BillingEmailService,
     BillingSchedulerService,
     BillingBackfillService,
+    BillingPaymentService,
   ],
   exports: [
     BillingPricingService,
@@ -32,6 +35,7 @@ import { BillingExcelService } from './billing-excel.service';
     BillingExcelService,
     BillingEmailService,
     BillingBackfillService,
+    BillingPaymentService,  
   ],
 })
 export class BillingModule {}

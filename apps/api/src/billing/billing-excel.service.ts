@@ -15,6 +15,23 @@ const CUSTOM = 'Custom Charge: ';
 const XLSX_MIME =
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
+/** Client-facing name only; keep stored legacy IDs for internal tracking. */
+function displayPreviousMonthCharge(value: unknown): string {
+  const description = String(value ?? '')
+    .replace(/^Previous Month Pending:\s*/i, '')
+    .trim();
+
+  const oldOutstanding =
+    /^Outstanding Invoice \[[^\]]+\]\s+(INV-[A-Za-z0-9-]+)\s*-\s*unpaid balance$/i.exec(
+      description,
+    );
+  if (oldOutstanding) {
+    return `Previous Month Outstanding Balance – Invoice ${oldOutstanding[1]}`;
+  }
+
+  return description || 'Previous-month pending charge';
+}
+
 @Injectable()
 export class BillingExcelService {
   constructor(private readonly prisma: PrismaService) {}
@@ -478,7 +495,9 @@ export class BillingExcelService {
             [
               '',
               '',
-              this.str(m.description).replace(prefix, ''),
+              prefix === PRIOR
+                ? displayPreviousMonthCharge(m.description)
+                : this.str(m.description).replace(prefix, ''),
               '',
               '',
               '',

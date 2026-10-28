@@ -25,6 +25,7 @@ import { BillingPricingService } from './billing-pricing.service';
 import { BillingService } from './billing.service';
 
 import { BillingPdfService } from './billing-pdf.service';
+import { BillingPaymentService } from './billing-payment.service';
 import { BillingExcelService } from './billing-excel.service';
 
 import { BillingEmailService } from './billing-email.service';
@@ -57,6 +58,7 @@ export class BillingController {
     private readonly pricing: BillingPricingService,
 
     private readonly pdf: BillingPdfService,
+    private readonly payments: BillingPaymentService,
     private readonly excel: BillingExcelService,
 
     private readonly email: BillingEmailService,
@@ -670,6 +672,24 @@ export class BillingController {
 
   ========================================================= */
 
+  @Get('invoices/:id/outstanding-previous')
+  getOutstandingPrevious(@Req() req: Request, @Param('id') id: string) {
+    return this.payments.previousOutstanding((req as any).user, id);
+  }
+
+  @Post('invoices/:id/outstanding-previous')
+  addOutstandingPrevious(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() body: { sourceInvoiceId: string },
+  ) {
+    return this.payments.carryForward(
+      (req as any).user,
+      id,
+      body?.sourceInvoiceId,
+    );
+  }
+
   @Post('invoices/:id/pdf')
   generateInvoicePdf(
     @Req() req: Request,
@@ -743,7 +763,10 @@ export class BillingController {
   ) {
     const result = await this.excel.generate((req as any).user, id);
     res.setHeader('Content-Type', result.contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="${result.filename.replace(/"/g, '')}"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${result.filename.replace(/"/g, '')}"`,
+    );
     res.setHeader('Content-Length', String(result.content.length));
     res.setHeader('Cache-Control', 'no-store');
     res.end(result.content);
@@ -853,6 +876,43 @@ export class BillingController {
      INVOICE DETAIL
 
   ========================================================= */
+
+  // PAYMENT SETTLEMENT (independent of invoice lifecycle status)
+  @Get('invoices/:id/payments')
+  getInvoicePayments(@Req() req: Request, @Param('id') id: string) {
+    return this.payments.getSummary((req as any).user, id);
+  }
+
+  @Post('invoices/:id/payments')
+  recordInvoicePayment(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body()
+    body: {
+      amount: string | number;
+      paidAt: string;
+      method: 'ACH' | 'CHECK' | 'WIRE' | 'CASH' | 'CARD' | 'OTHER';
+      reference?: string;
+      notes?: string;
+    },
+  ) {
+    return this.payments.record((req as any).user, id, body);
+  }
+
+  @Post('invoices/:id/payments/:paymentId/reverse')
+  reverseInvoicePayment(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Param('paymentId') paymentId: string,
+    @Body() body: { reason: string },
+  ) {
+    return this.payments.reverse(
+      (req as any).user,
+      id,
+      paymentId,
+      body?.reason,
+    );
+  }
 
   @Get('invoices/:id')
   getInvoice(

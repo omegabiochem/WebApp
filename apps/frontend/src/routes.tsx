@@ -49,6 +49,7 @@ import ApeReport from "./pages/LabReports/ApeReport";
 import ApeLoginBook from "./loginbooks/ApeLoginBook";
 import ClientDetailsAdmin from "./pages/Admin/ClientDetailsAdmin";
 import BillingDashboard from "./pages/Dashboard/BillingDashboard";
+import RequestTesting from "./pages/Home/RequestTesting";
 // import MicroReportForm from "./pages/Reports/MicroReportForm";
 // import MicroWaterReportForm from "./pages/Reports/MicroWaterReportForm";
 
@@ -67,6 +68,7 @@ export const router = createBrowserRouter([
       { path: "login", element: <Login /> },
       { path: "auth/verify-2fa", element: <Verify2FA /> },
       { path: "auth/common-select", element: <CommonSelect /> },
+      { path: "request-testing", element: <RequestTesting /> },
 
       // Auth-only utility routes
       {

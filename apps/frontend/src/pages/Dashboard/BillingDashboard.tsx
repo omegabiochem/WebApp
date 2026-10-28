@@ -297,6 +297,26 @@ type InvoiceRevisionHistoryRow = {
   createdAt: string;
 };
 
+type InvoicePaymentSummary = {
+  invoiceId: string;
+  total: string;
+  paid: string;
+  balance: string;
+  paymentStatus: "UNPAID" | "PARTIALLY_PAID" | "PAID" | "VOID";
+  payments: Array<{
+    id: string;
+    amount: string;
+    paidAt: string;
+    method: string;
+    reference?: string | null;
+    notes?: string | null;
+    recordedBy: string;
+    reversedAt?: string | null;
+    reversedBy?: string | null;
+    reversalReason?: string | null;
+  }>;
+};
+
 type InvoiceDetail = InvoiceRow & {
   clientLegalName?: string | null;
   billingContactName?: string | null;
@@ -536,6 +556,27 @@ const CUSTOM_ITEM_VALUE = "__CUSTOM_ITEM__";
 const CUSTOM_CLIENT_VALUE = "__CUSTOM_CLIENT__";
 const PREVIOUS_MONTH_MANUAL_PREFIX = "Previous Month Pending: ";
 const CUSTOM_CHARGE_PREFIX = "Custom Charge: ";
+
+// Legacy carry-forward records contain an internal invoice ID in the description.
+// Format only the UI label; keep the original description for backend tracking.
+function previousMonthChargeDisplay(description: string | null | undefined) {
+  const text = String(description ?? "")
+    .replace(/^Previous Month Pending:\s*/i, "")
+    .trim();
+  const legacy =
+    /^Outstanding Invoice \[[^\]]+\]\s*(INV-[A-Z0-9-]+)\s*-\s*unpaid balance$/i.exec(
+      text,
+    );
+  if (legacy)
+    return `Previous Month Outstanding Balance – Invoice ${legacy[1]}`;
+  return text;
+}
+
+function isOutstandingCarryForward(description: string | null | undefined) {
+  return /^Previous Month Pending:\s*(?:Outstanding Invoice \[[^\]]+\]|Previous Month Outstanding Balance\s*[–-]\s*Invoice)/i.test(
+    String(description ?? ""),
+  );
+}
 
 type ManualLastMonthChargeDraft = {
   id: number;
@@ -1258,18 +1299,50 @@ function InvoiceFormatMenu({
   disabled?: boolean;
 }) {
   return (
-    <div className="group relative inline-flex" onKeyDown={(event) => {
-      if (event.key === "Escape") (event.currentTarget.querySelector("button") as HTMLButtonElement | null)?.blur();
-    }}>
-      <button type="button" disabled={disabled}
+    <div
+      className="group relative inline-flex"
+      onKeyDown={(event) => {
+        if (event.key === "Escape")
+          (
+            event.currentTarget.querySelector(
+              "button",
+            ) as HTMLButtonElement | null
+          )?.blur();
+      }}
+    >
+      <button
+        type="button"
+        disabled={disabled}
         aria-haspopup="menu"
-        className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:opacity-50">
-        <LeadingIcon className="h-4 w-4" />{label}<ChevronDown className="h-4 w-4" />
+        className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:opacity-50"
+      >
+        <LeadingIcon className="h-4 w-4" />
+        {label}
+        <ChevronDown className="h-4 w-4" />
       </button>
       <div className="invisible absolute left-0 top-full z-50 min-w-[165px] pt-1 opacity-0 transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
-        <div role="menu" className="overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-          <button role="menuitem" type="button" onClick={onPdf} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-100"><FileText className="h-4 w-4"/>PDF</button>
-          <button role="menuitem" type="button" onClick={onExcel} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-100"><FileSpreadsheet className="h-4 w-4 text-emerald-700"/>Excel</button>
+        <div
+          role="menu"
+          className="overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+        >
+          <button
+            role="menuitem"
+            type="button"
+            onClick={onPdf}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-100"
+          >
+            <FileText className="h-4 w-4" />
+            PDF
+          </button>
+          <button
+            role="menuitem"
+            type="button"
+            onClick={onExcel}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-100"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-emerald-700" />
+            Excel
+          </button>
         </div>
       </div>
     </div>
@@ -1558,6 +1631,29 @@ export default function BillingDashboard() {
     null,
   );
   const [detailLoading, setDetailLoading] = useState(false);
+  const [paymentSummary, setPaymentSummary] =
+    useState<InvoicePaymentSummary | null>(null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentDate, setPaymentDate] = useState(todayDateInput());
+  const [paymentMethod, setPaymentMethod] = useState("ACH");
+  const [paymentReference, setPaymentReference] = useState("");
+  const [paymentNotes, setPaymentNotes] = useState("");
+  const [reversingPaymentId, setReversingPaymentId] = useState<string | null>(
+    null,
+  );
+
+  const [priorOutstanding, setPriorOutstanding] = useState<
+    Array<{
+      invoiceId: string;
+      invoiceNumber: string;
+      total: string;
+      paid: string;
+      balance: string;
+    }>
+  >([]);
+  const [showPriorOutstanding, setShowPriorOutstanding] = useState(false);
+  const [loadingPriorOutstanding, setLoadingPriorOutstanding] = useState(false);
 
   const [lastMonthPending, setLastMonthPending] =
     useState<UnbilledResponse | null>(null);
@@ -2746,13 +2842,132 @@ export default function BillingDashboard() {
     invoiceDetail?.clientCode,
   ]);
 
+  async function fetchPaymentSummary(id: string) {
+    setPaymentLoading(true);
+    try {
+      const result = await api<InvoicePaymentSummary>(
+        `/billing/invoices/${id}/payments`,
+      );
+      setPaymentSummary(result);
+      return result;
+    } catch (error: any) {
+      toast.error(extractMessage(error));
+      return null;
+    } finally {
+      setPaymentLoading(false);
+    }
+  }
+
+  async function recordPayment() {
+    if (!invoiceDetail || !isManager) return;
+    const amount = Number(paymentAmount);
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0 ||
+      Math.abs(Math.round(amount * 100) - amount * 100) > 0.000001 ||
+      amount > Number(paymentSummary?.balance ?? 0)
+    ) {
+      toast.error(
+        "Enter a valid payment amount not exceeding the outstanding balance.",
+      );
+      return;
+    }
+    setWorking("RECORD_PAYMENT");
+    try {
+      await api(`/billing/invoices/${invoiceDetail.id}/payments`, {
+        method: "POST",
+        body: JSON.stringify({
+          amount: paymentAmount,
+          paidAt: `${paymentDate}T12:00:00`,
+          method: paymentMethod,
+          reference: paymentReference,
+          notes: paymentNotes,
+        }),
+      });
+      toast.success("Payment recorded");
+      setPaymentAmount("");
+      setPaymentReference("");
+      setPaymentNotes("");
+      await fetchPaymentSummary(invoiceDetail.id);
+    } catch (error: any) {
+      toast.error(extractMessage(error));
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  async function reversePayment(paymentId: string) {
+    if (!invoiceDetail || !isManager) return;
+    const reason = window.prompt(
+      "Reason for reversing this payment (required):",
+    );
+    if (!reason?.trim()) return;
+    setReversingPaymentId(paymentId);
+    try {
+      await api(
+        `/billing/invoices/${invoiceDetail.id}/payments/${paymentId}/reverse`,
+        {
+          method: "POST",
+          body: JSON.stringify({ reason: reason.trim() }),
+        },
+      );
+      toast.success("Payment reversed");
+      await fetchPaymentSummary(invoiceDetail.id);
+    } catch (error: any) {
+      toast.error(extractMessage(error));
+    } finally {
+      setReversingPaymentId(null);
+    }
+  }
+
+  async function loadPriorOutstanding(id: string) {
+    setLoadingPriorOutstanding(true);
+    try {
+      const data = await api<{
+        items: Array<{
+          invoiceId: string;
+          invoiceNumber: string;
+          total: string;
+          paid: string;
+          balance: string;
+        }>;
+      }>(`/billing/invoices/${id}/outstanding-previous`);
+      setPriorOutstanding(data.items ?? []);
+    } catch (error: any) {
+      toast.error(extractMessage(error));
+    } finally {
+      setLoadingPriorOutstanding(false);
+    }
+  }
+
+  async function addPriorOutstanding(sourceInvoiceId: string) {
+    if (!invoiceDetail || !isManager) return;
+    setWorking("ADD_PRIOR_OUTSTANDING");
+    try {
+      await api(`/billing/invoices/${invoiceDetail.id}/outstanding-previous`, {
+        method: "POST",
+        body: JSON.stringify({ sourceInvoiceId }),
+      });
+      toast.success("Outstanding balance added to last month charges");
+      await reloadSelectedInvoice(invoiceDetail.id);
+      await loadPriorOutstanding(invoiceDetail.id);
+      await refreshAll();
+    } catch (error: any) {
+      toast.error(extractMessage(error));
+    } finally {
+      setWorking(null);
+    }
+  }
+
   async function openInvoice(id: string) {
     setSelectedInvoiceId(id);
+    setPaymentSummary(null);
     setDetailLoading(true);
 
     try {
       const detail = await api<InvoiceDetail>(`/billing/invoices/${id}`);
       setInvoiceDetail(detail);
+      void fetchPaymentSummary(id);
       setDraftAdjustment(detail.adjustmentAmount ?? "0.00");
       setDraftNotes(detail.notes ?? "");
     } catch (error: any) {
@@ -2768,6 +2983,7 @@ export default function BillingDashboard() {
 
     const detail = await api<InvoiceDetail>(`/billing/invoices/${id}`);
     setInvoiceDetail(detail);
+    void fetchPaymentSummary(id);
     setDraftAdjustment(detail.adjustmentAmount ?? "0.00");
     setDraftNotes(detail.notes ?? "");
   }
@@ -3275,11 +3491,17 @@ export default function BillingDashboard() {
     }
   }
 
-  async function openInvoiceExcel(invoiceId: string, invoiceNumber: string, mode: "VIEW" | "DOWNLOAD") {
+  async function openInvoiceExcel(
+    invoiceId: string,
+    invoiceNumber: string,
+    mode: "VIEW" | "DOWNLOAD",
+  ) {
     const key = `${mode}_EXCEL`;
     setWorking(key);
     try {
-      const { blob, filename } = await apiBlob(`/billing/invoices/${invoiceId}/excel`);
+      const { blob, filename } = await apiBlob(
+        `/billing/invoices/${invoiceId}/excel`,
+      );
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -3288,7 +3510,8 @@ export default function BillingDashboard() {
       link.click();
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
-      if (mode === "VIEW") toast.success("Open the Excel file from your downloads to view it");
+      if (mode === "VIEW")
+        toast.success("Open the Excel file from your downloads to view it");
     } catch (error: any) {
       toast.error(extractMessage(error));
     } finally {
@@ -3298,7 +3521,11 @@ export default function BillingDashboard() {
 
   async function downloadExcel() {
     if (!invoiceDetail) return;
-    await openInvoiceExcel(invoiceDetail.id, invoiceDetail.invoiceNumber || "invoice", "DOWNLOAD");
+    await openInvoiceExcel(
+      invoiceDetail.id,
+      invoiceDetail.invoiceNumber || "invoice",
+      "DOWNLOAD",
+    );
   }
 
   async function viewInvoicePdfFromList(row: InvoiceRow) {
@@ -3447,13 +3674,16 @@ export default function BillingDashboard() {
     setWorking("SEND");
 
     try {
-      await api(`/billing/invoices/${invoiceDetail.id}/send?sendPdf=${actionDialog.sendPdf ? "1" : "0"}&sendExcel=${actionDialog.sendExcel ? "1" : "0"}`, {
-        method: "POST",
-        body: JSON.stringify({
-          ...(toEmail ? { toEmail } : {}),
-          resend: isResend,
-        }),
-      });
+      await api(
+        `/billing/invoices/${invoiceDetail.id}/send?sendPdf=${actionDialog.sendPdf ? "1" : "0"}&sendExcel=${actionDialog.sendExcel ? "1" : "0"}`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            ...(toEmail ? { toEmail } : {}),
+            resend: isResend,
+          }),
+        },
+      );
 
       setActionDialog(null);
       await reloadSelectedInvoice(invoiceDetail.id);
@@ -6393,11 +6623,19 @@ export default function BillingDashboard() {
                               label="View"
                               icon={FileText}
                               onPdf={() => viewInvoicePdfFromList(row)}
-                              onExcel={() => void openInvoiceExcel(row.id, row.invoiceNumber || "invoice", "VIEW")}
+                              onExcel={() =>
+                                void openInvoiceExcel(
+                                  row.id,
+                                  row.invoiceNumber || "invoice",
+                                  "VIEW",
+                                )
+                              }
                               disabled={working !== null}
                             />
                           ) : (
-                            <span className="text-xs text-slate-400">Not generated</span>
+                            <span className="text-xs text-slate-400">
+                              Not generated
+                            </span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
@@ -8639,6 +8877,26 @@ export default function BillingDashboard() {
                                     <button
                                       type="button"
                                       onClick={() => {
+                                        const next = !showPriorOutstanding;
+                                        setShowPriorOutstanding(next);
+                                        setShowLastMonthPicker(false);
+                                        setShowManualLastMonthCharge(false);
+                                        setShowCustomCharge(false);
+                                        if (next)
+                                          void loadPriorOutstanding(
+                                            invoiceDetail.id,
+                                          );
+                                      }}
+                                      disabled={!!working}
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-orange-300 bg-white px-3 py-2 text-xs font-semibold text-orange-900 hover:bg-orange-50 disabled:opacity-50"
+                                    >
+                                      <CircleDollarSign className="h-3.5 w-3.5" />
+                                      Add Outstanding Invoice Balance
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
                                         setShowManualLastMonthCharge(
                                           (value) => !value,
                                         );
@@ -8665,6 +8923,59 @@ export default function BillingDashboard() {
                                       <Plus className="h-3.5 w-3.5" />
                                       Add Custom Charge
                                     </button>
+                                  </div>
+                                )}
+
+                              {showPriorOutstanding &&
+                                invoiceDetail.status === "DRAFT" &&
+                                isManager && (
+                                  <div className="mt-4 rounded-xl border border-orange-200 bg-white p-4">
+                                    <h4 className="text-sm font-semibold text-slate-900">
+                                      Outstanding invoices from earlier months
+                                    </h4>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                      Select an unpaid invoice balance to add it
+                                      as a separate last-month line. This does
+                                      not automatically mark the original
+                                      invoice paid.
+                                    </p>
+                                    {loadingPriorOutstanding ? (
+                                      <div className="mt-3">
+                                        <Spinner dark />
+                                      </div>
+                                    ) : priorOutstanding.length === 0 ? (
+                                      <p className="mt-3 text-sm text-slate-500">
+                                        No eligible outstanding invoices.
+                                      </p>
+                                    ) : (
+                                      priorOutstanding.map((item) => (
+                                        <div
+                                          key={item.invoiceId}
+                                          className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-3"
+                                        >
+                                          <div className="text-sm">
+                                            <b>{item.invoiceNumber}</b>
+                                            <div className="text-xs text-slate-600">
+                                              Total: {money(item.total)} · Paid:{" "}
+                                              {money(item.paid)} · Outstanding:{" "}
+                                              <b>{money(item.balance)}</b>
+                                            </div>
+                                          </div>
+                                          <Button
+                                            variant="secondary"
+                                            disabled={!!working}
+                                            onClick={() =>
+                                              void addPriorOutstanding(
+                                                item.invoiceId,
+                                              )
+                                            }
+                                          >
+                                            <Plus className="h-4 w-4" /> Add{" "}
+                                            {money(item.balance)}
+                                          </Button>
+                                        </div>
+                                      ))
+                                    )}
                                   </div>
                                 )}
 
@@ -9267,14 +9578,14 @@ export default function BillingDashboard() {
                                   </div>
                                   <div className="mt-2 space-y-2">
                                     {previousMonthManualLines.map((line) => {
-                                      const visibleChargeName = String(
-                                        line.description ?? "",
-                                      )
-                                        .replace(
-                                          PREVIOUS_MONTH_MANUAL_PREFIX,
-                                          "",
-                                        )
-                                        .trim();
+                                      const visibleChargeName =
+                                        previousMonthChargeDisplay(
+                                          line.description,
+                                        );
+                                      const isCarriedOutstanding =
+                                        isOutstandingCarryForward(
+                                          line.description,
+                                        );
                                       const isEditing =
                                         editingManualLastMonthLineId ===
                                         line.id;
@@ -9359,7 +9670,9 @@ export default function BillingDashboard() {
                                                     "Previous-month pending charge"}
                                                 </div>
                                                 <div className="text-[11px] text-amber-800">
-                                                  Manual previous-month charge
+                                                  {isCarriedOutstanding
+                                                    ? "Previous month outstanding balance"
+                                                    : "Manual previous-month charge"}
                                                 </div>
                                               </div>
                                               <div className="flex items-center gap-2">
@@ -9368,7 +9681,8 @@ export default function BillingDashboard() {
                                                 </span>
                                                 {invoiceDetail.status ===
                                                   "DRAFT" &&
-                                                  isManager && (
+                                                  isManager &&
+                                                  !isCarriedOutstanding && (
                                                     <>
                                                       <button
                                                         type="button"
@@ -9619,7 +9933,13 @@ export default function BillingDashboard() {
                                   label="View"
                                   icon={FileText}
                                   onPdf={() => void getPdf("VIEW")}
-                                  onExcel={() => void openInvoiceExcel(invoiceDetail.id, invoiceDetail.invoiceNumber || "invoice", "VIEW")}
+                                  onExcel={() =>
+                                    void openInvoiceExcel(
+                                      invoiceDetail.id,
+                                      invoiceDetail.invoiceNumber || "invoice",
+                                      "VIEW",
+                                    )
+                                  }
                                   disabled={working !== null}
                                 />
                                 <InvoiceFormatMenu
@@ -9881,6 +10201,189 @@ export default function BillingDashboard() {
                             </div>
                           </div>
                         </div>
+
+                        {(invoiceDetail.status === "CONFIRMED" ||
+                          invoiceDetail.status === "SENT") && (
+                          <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <h3 className="text-sm font-bold text-slate-900">
+                                Payment Settlement
+                              </h3>
+                              <span
+                                className={`rounded-full px-2 py-1 text-xs font-semibold ${paymentSummary?.paymentStatus === "PAID" ? "bg-green-100 text-green-800" : paymentSummary?.paymentStatus === "PARTIALLY_PAID" ? "bg-amber-100 text-amber-800" : "bg-rose-100 text-rose-700"}`}
+                              >
+                                {paymentLoading
+                                  ? "Loading..."
+                                  : nice(
+                                      paymentSummary?.paymentStatus || "UNPAID",
+                                    )}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 text-xs">
+                              <div>
+                                <div className="text-slate-500">
+                                  Invoice total
+                                </div>
+                                <div className="font-bold">
+                                  {money(invoiceDetail.total)}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-slate-500">Paid</div>
+                                <div className="font-bold text-green-700">
+                                  {money(paymentSummary?.paid)}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-slate-500">
+                                  Outstanding
+                                </div>
+                                <div className="font-bold text-rose-700">
+                                  {money(paymentSummary?.balance)}
+                                </div>
+                              </div>
+                            </div>
+                            {isManager &&
+                              paymentSummary &&
+                              Number(paymentSummary.balance) > 0 && (
+                                <div className="space-y-2 rounded-lg bg-slate-50 p-3">
+                                  <div className="text-xs font-semibold">
+                                    Record a payment
+                                  </div>
+                                  <div className="grid gap-2 sm:grid-cols-3">
+                                    <label className="text-xs">
+                                      Amount ($)
+                                      <input
+                                        type="number"
+                                        min="0.01"
+                                        step="0.01"
+                                        max={paymentSummary.balance}
+                                        value={paymentAmount}
+                                        onChange={(e) =>
+                                          setPaymentAmount(e.target.value)
+                                        }
+                                        className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5"
+                                      />
+                                    </label>
+                                    <label className="text-xs">
+                                      Payment date
+                                      <input
+                                        type="date"
+                                        value={paymentDate}
+                                        onChange={(e) =>
+                                          setPaymentDate(e.target.value)
+                                        }
+                                        className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5"
+                                      />
+                                    </label>
+                                    <label className="text-xs">
+                                      Method
+                                      <select
+                                        value={paymentMethod}
+                                        onChange={(e) =>
+                                          setPaymentMethod(e.target.value)
+                                        }
+                                        className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5"
+                                      >
+                                        {[
+                                          "ACH",
+                                          "CHECK",
+                                          "WIRE",
+                                          "CASH",
+                                          "CARD",
+                                          "OTHER",
+                                        ].map((m) => (
+                                          <option key={m} value={m}>
+                                            {m}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                  </div>
+                                  <input
+                                    value={paymentReference}
+                                    onChange={(e) =>
+                                      setPaymentReference(e.target.value)
+                                    }
+                                    placeholder="Transaction / check reference (optional)"
+                                    className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs"
+                                  />
+                                  <input
+                                    value={paymentNotes}
+                                    onChange={(e) =>
+                                      setPaymentNotes(e.target.value)
+                                    }
+                                    placeholder="Notes (optional)"
+                                    className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs"
+                                  />
+                                  <Button
+                                    onClick={recordPayment}
+                                    disabled={
+                                      working === "RECORD_PAYMENT" ||
+                                      !paymentAmount ||
+                                      !paymentDate
+                                    }
+                                  >
+                                    {working === "RECORD_PAYMENT" ? (
+                                      <Spinner />
+                                    ) : (
+                                      "Record Payment"
+                                    )}
+                                  </Button>
+                                </div>
+                              )}
+                            {!!paymentSummary?.payments.length && (
+                              <div className="space-y-1.5">
+                                <div className="text-xs font-semibold">
+                                  Payment history
+                                </div>
+                                {paymentSummary.payments.map((payment) => (
+                                  <div
+                                    key={payment.id}
+                                    className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 py-2 text-xs"
+                                  >
+                                    <div>
+                                      <div
+                                        className={
+                                          payment.reversedAt
+                                            ? "line-through text-slate-400"
+                                            : "font-semibold"
+                                        }
+                                      >
+                                        {money(payment.amount)} ·{" "}
+                                        {payment.method} ·{" "}
+                                        {formatDate(payment.paidAt)}
+                                      </div>
+                                      {payment.reference && (
+                                        <div className="text-slate-500">
+                                          Ref: {payment.reference}
+                                        </div>
+                                      )}
+                                      {payment.reversedAt && (
+                                        <div className="text-red-600">
+                                          Reversed: {payment.reversalReason}
+                                        </div>
+                                      )}
+                                    </div>
+                                    {isManager && !payment.reversedAt && (
+                                      <Button
+                                        variant="secondary"
+                                        onClick={() =>
+                                          reversePayment(payment.id)
+                                        }
+                                        disabled={
+                                          reversingPaymentId === payment.id
+                                        }
+                                      >
+                                        Reverse
+                                      </Button>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {invoiceDetail.confirmedAt && (
                           <div className="mt-4 border-t border-slate-200 pt-3 text-xs text-slate-500">
@@ -10351,18 +10854,44 @@ export default function BillingDashboard() {
                   </div>
 
                   <div className="rounded-lg border border-slate-200 p-3">
-                    <div className="mb-2 text-xs font-semibold text-slate-600">Attachment formats</div>
+                    <div className="mb-2 text-xs font-semibold text-slate-600">
+                      Attachment formats
+                    </div>
                     <div className="flex flex-wrap gap-5">
                       <label className="flex cursor-pointer items-center gap-2 text-sm">
-                        <input type="checkbox" checked={actionDialog.sendPdf} onChange={(e) => setActionDialog({ ...actionDialog, sendPdf: e.target.checked })} />
-                        <FileText className="h-4 w-4" />PDF
+                        <input
+                          type="checkbox"
+                          checked={actionDialog.sendPdf}
+                          onChange={(e) =>
+                            setActionDialog({
+                              ...actionDialog,
+                              sendPdf: e.target.checked,
+                            })
+                          }
+                        />
+                        <FileText className="h-4 w-4" />
+                        PDF
                       </label>
                       <label className="flex cursor-pointer items-center gap-2 text-sm">
-                        <input type="checkbox" checked={actionDialog.sendExcel} onChange={(e) => setActionDialog({ ...actionDialog, sendExcel: e.target.checked })} />
-                        <FileSpreadsheet className="h-4 w-4 text-emerald-700" />Excel
+                        <input
+                          type="checkbox"
+                          checked={actionDialog.sendExcel}
+                          onChange={(e) =>
+                            setActionDialog({
+                              ...actionDialog,
+                              sendExcel: e.target.checked,
+                            })
+                          }
+                        />
+                        <FileSpreadsheet className="h-4 w-4 text-emerald-700" />
+                        Excel
                       </label>
                     </div>
-                    {!actionDialog.sendPdf && !actionDialog.sendExcel && <p className="mt-2 text-xs text-rose-600">Select at least one format.</p>}
+                    {!actionDialog.sendPdf && !actionDialog.sendExcel && (
+                      <p className="mt-2 text-xs text-rose-600">
+                        Select at least one format.
+                      </p>
+                    )}
                   </div>
 
                   <label className="block">
@@ -10550,7 +11079,10 @@ export default function BillingDashboard() {
                 <Button
                   variant="success"
                   onClick={submitSendInvoice}
-                  disabled={working === "SEND" || (!actionDialog.sendPdf && !actionDialog.sendExcel)}
+                  disabled={
+                    working === "SEND" ||
+                    (!actionDialog.sendPdf && !actionDialog.sendExcel)
+                  }
                 >
                   {working === "SEND" ? (
                     <Spinner />

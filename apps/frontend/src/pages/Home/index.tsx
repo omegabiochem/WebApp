@@ -301,9 +301,7 @@ export default function Home() {
               </a>
 
               <a
-                href="https://www.omegabiochem.com/contact-us.html"
-                target="_blank"
-                rel="noopener noreferrer"
+                href="/request-testing"
                 className="inline-flex min-w-[220px] items-center justify-center gap-2 rounded-xl border border-blue-300 bg-white px-6 py-3 text-sm font-semibold text-[var(--brand)] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-[var(--brand)] hover:bg-blue-50"
               >
                 Request Testing
