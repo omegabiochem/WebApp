@@ -127,7 +127,9 @@ const FRONTDESK_STATUSES: ("ALL" | ReportStatus)[] = [
   "FRONTDESK_NEEDS_CORRECTION",
 ];
 
-const FRONTDESK_VISIBLE_STATUSES = new Set<string>(FRONTDESK_STATUSES.filter((s) => s !== "ALL"));
+const FRONTDESK_VISIBLE_STATUSES = new Set<string>(
+  FRONTDESK_STATUSES.filter((s) => s !== "ALL"),
+);
 
 // used to know which viewer to render
 // const formTypeToSlug: Record<string, string> = {
@@ -743,9 +745,7 @@ export default function FrontDeskDashboard() {
        */
       setReports((prev) =>
         prev
-          .map((report) =>
-            report.id === id ? { ...report, status } : report,
-          )
+          .map((report) => (report.id === id ? { ...report, status } : report))
           .filter((report) =>
             status === String(report.status) && report.id === id
               ? FRONTDESK_VISIBLE_STATUSES.has(String(report.status))
@@ -974,24 +974,27 @@ export default function FrontDeskDashboard() {
     }
 
     if (discardedCorrectionIds.length) {
-      params.set(
-        "discardedCorrectionIds",
-        discardedCorrectionIds.join(","),
-      );
+      params.set("discardedCorrectionIds", discardedCorrectionIds.join(","));
     }
 
-    if (debouncedSearchClient.trim()) params.set("client", debouncedSearchClient.trim());
-    if (debouncedSearchReport.trim()) params.set("report", debouncedSearchReport.trim());
+    if (debouncedSearchClient.trim())
+      params.set("client", debouncedSearchClient.trim());
+    if (debouncedSearchReport.trim())
+      params.set("report", debouncedSearchReport.trim());
     if (debouncedSearch.trim()) params.set("q", debouncedSearch.trim());
 
     if (fromDate) params.set("from", fromDate);
     if (toDate) params.set("to", toDate);
 
-    if (debouncedFormNoFrom.trim()) params.set("formFrom", debouncedFormNoFrom.trim());
-    if (debouncedFormNoTo.trim()) params.set("formTo", debouncedFormNoTo.trim());
+    if (debouncedFormNoFrom.trim())
+      params.set("formFrom", debouncedFormNoFrom.trim());
+    if (debouncedFormNoTo.trim())
+      params.set("formTo", debouncedFormNoTo.trim());
 
-    if (debouncedReportNoFrom.trim()) params.set("reportFrom", debouncedReportNoFrom.trim());
-    if (debouncedReportNoTo.trim()) params.set("reportTo", debouncedReportNoTo.trim());
+    if (debouncedReportNoFrom.trim())
+      params.set("reportFrom", debouncedReportNoFrom.trim());
+    if (debouncedReportNoTo.trim())
+      params.set("reportTo", debouncedReportNoTo.trim());
 
     return api<{
       rows: Report[];
@@ -1012,7 +1015,8 @@ export default function FrontDeskDashboard() {
     silentRefreshNextRef.current = false;
 
     async function loadDashboardReports() {
-      if (!filtersHydrated || !pinsHydrated || !correctionDiscardHydrated) return;
+      if (!filtersHydrated || !pinsHydrated || !correctionDiscardHydrated)
+        return;
       try {
         if (!silentRefresh) {
           setLoading(true);
@@ -1033,7 +1037,11 @@ export default function FrontDeskDashboard() {
 
         if (abort) return;
 
-        setReports(res.rows.filter((r) => FRONTDESK_VISIBLE_STATUSES.has(String(r.status))));
+        setReports(
+          res.rows.filter((r) =>
+            FRONTDESK_VISIBLE_STATUSES.has(String(r.status)),
+          ),
+        );
         setServerTotal(res.total);
         setServerTotalPages(res.totalPages);
 
@@ -3462,6 +3470,45 @@ Missing: ${missing
     setPage(nextPage);
   }
 
+  const MAX_ATTACHMENT_SIZE_MB = 15;
+  const MAX_ATTACHMENT_SIZE_BYTES = MAX_ATTACHMENT_SIZE_MB * 1024 * 1024;
+
+  const ALLOWED_ATTACHMENT_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png"];
+
+  const ALLOWED_ATTACHMENT_MIME_TYPES = new Set([
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+  ]);
+
+  function validateAttachmentFile(file: File): string | null {
+    if (!file.size) {
+      return "The selected file is empty.";
+    }
+
+    if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
+      return `File is too large. Maximum allowed size is ${MAX_ATTACHMENT_SIZE_MB} MB.`;
+    }
+
+    const lowerName = file.name.toLowerCase();
+
+    const validExtension = ALLOWED_ATTACHMENT_EXTENSIONS.some((ext) =>
+      lowerName.endsWith(ext),
+    );
+
+    if (!validExtension) {
+      return "Invalid file type. Only PDF, JPG, JPEG, and PNG files are allowed.";
+    }
+
+    // Some browsers can return an empty MIME type.
+    // Backend validation remains authoritative.
+    if (file.type && !ALLOWED_ATTACHMENT_MIME_TYPES.has(file.type)) {
+      return "Invalid file type. Only PDF, JPG, JPEG, and PNG files are allowed.";
+    }
+
+    return null;
+  }
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -4424,7 +4471,7 @@ Missing: ${missing
                               {/* Hidden input */}
                               <input
                                 type="file"
-                                accept=".pdf,image/*"
+                                accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
                                 className="hidden"
                                 ref={(el) => {
                                   if (el) fileInputs.current[r.id] = el;
@@ -4432,10 +4479,21 @@ Missing: ${missing
                                 }}
                                 onChange={async (e) => {
                                   const file = e.target.files?.[0];
-                                  e.target.value = ""; // allow re-upload same file again
+
+                                  e.target.value = "";
+
                                   if (!file) return;
 
+                                  const validationError =
+                                    validateAttachmentFile(file);
+
+                                  if (validationError) {
+                                    alert(`⚠️ ${validationError}`);
+                                    return;
+                                  }
+
                                   if (rowUploading) return;
+
                                   setUploadingId(r.id);
 
                                   // ✅ AUDIT
