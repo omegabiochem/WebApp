@@ -18,6 +18,7 @@ import type { Express } from 'express';
 import express from 'express';
 
 import { ChemistryAttachmentsService } from './chemistryattachments.service';
+import { MAX_ATTACHMENT_SIZE_BYTES, validateAttachmentType } from './attachment-upload.policy';
 
 type UploadMeta = {
   source?: string;
@@ -40,15 +41,32 @@ export class ChemistryAttachmentsController {
     FileInterceptor('file', {
       storage: diskStorage({
         destination: (_req, _file, cb) => cb(null, UPLOAD_ROOT),
+
         filename: (_req, file, cb) => {
           const ext = path.extname(file.originalname) || '.bin';
+
           const base = path
             .basename(file.originalname, ext)
             .replace(/[^\w.\-]/g, '_');
+
           cb(null, `${Date.now()}_${base}${ext}`);
         },
       }),
-      limits: { fileSize: 50 * 1024 * 1024 },
+
+      limits: {
+        files: 1,
+        fileSize: MAX_ATTACHMENT_SIZE_BYTES,
+      },
+
+      fileFilter: (_req, file, cb) => {
+        try {
+          validateAttachmentType(file);
+
+          cb(null, true);
+        } catch (error) {
+          cb(error as Error, false);
+        }
+      },
     }),
   )
   async upload(

@@ -13,6 +13,7 @@ import type { Express } from 'express';
 import { ReadStream } from 'fs';
 import { randomUUID } from 'crypto';
 import { getRequestContext } from 'src/common/request-context';
+import { validateAttachmentSignature, validateAttachmentSize, validateAttachmentType } from './attachment-upload.policy';
 
 type CreateInput = {
   chemistryId: string;
@@ -68,78 +69,238 @@ export class ChemistryAttachmentsService {
   }
 
   async create(input: CreateInput) {
-    const report = await this.prisma.chemistryReport.findUnique({
-      where: { id: input.chemistryId },
-      select: { id: true },
-    });
-    if (!report) throw new NotFoundException('Report not found');
+  validateAttachmentType(input.file);
+  validateAttachmentSize(input.file);
 
-    // 👇 tolerate memory or disk
-    const { path: filePath, isTemp } = await this.ensureFilePath(input.file);
+  const report =
+    await this.prisma.chemistryReport.findUnique({
+      where: {
+        id: input.chemistryId,
+      },
+
+      select: {
+        id: true,
+      },
+    });
+
+  if (!report) {
+    throw new NotFoundException(
+      'Report not found',
+    );
+  }
+
+  const {
+    path: filePath,
+    isTemp,
+  } = await this.ensureFilePath(
+    input.file,
+  );
+
+  try {
+    await validateAttachmentSignature(
+      filePath,
+      input.file.originalname,
+    );
 
     const checksum =
-      input.providedChecksum ?? (await this.sha256FromPath(filePath));
+      input.providedChecksum ??
+      (await this.sha256FromPath(
+        filePath,
+      ));
 
-    const duplicate = await this.prisma.chemistryAttachment.findFirst({
-      where: {
-        chemistryId: input.chemistryId,
-        checksum,
-      },
-      select: { id: true },
-    });
+    const duplicate =
+      await this.prisma
+        .chemistryAttachment
+        .findFirst({
+          where: {
+            chemistryId:
+              input.chemistryId,
+
+            checksum,
+          },
+
+          select: {
+            id: true,
+          },
+        });
 
     if (duplicate) {
-      if (isTemp) await fs.unlink(filePath).catch(() => {});
-      throw new ConflictException('Duplicate attachment already exists.');
+      throw new ConflictException(
+        'Duplicate attachment already exists.',
+      );
     }
 
-    const storageKey = await this.storage.put({
-      filePath,
-      filename: input.file.originalname,
-      subdir: `chemistry-reports/${input.chemistryId}`,
-    });
+    const storageKey =
+      await this.storage.put({
+        filePath,
 
-    // If storage.put() copied (not renamed), we can delete any temp file
-    // (If it renamed, the original path no longer exists; unlink will just fail silently.)
-    if (isTemp) await fs.unlink(filePath).catch(() => {});
+        filename:
+          input.file.originalname,
+
+        subdir:
+          `chemistry-reports/${input.chemistryId}`,
+      });
 
     try {
-      const attachment = await this.prisma.chemistryAttachment.create({
-        data: {
-          chemistryId: input.chemistryId,
-          kind: input.kind,
-          filename: input.file.originalname,
-          storageKey,
-          storageDriver: 's3',
-          storageBucket: process.env.S3_BUCKET ?? null,
-          checksum,
-          source: input.source,
-          pages: input.pages,
-          createdBy: input.createdBy ?? null,
-          meta: input.meta ?? {},
-        },
-      });
+      const attachment =
+        await this.prisma
+          .chemistryAttachment
+          .create({
+            data: {
+              chemistryId:
+                input.chemistryId,
+
+              kind:
+                input.kind,
+
+              filename:
+                input.file.originalname,
+
+              storageKey,
+
+              storageDriver: 's3',
+
+              storageBucket:
+                process.env.S3_BUCKET ??
+                null,
+
+              checksum,
+
+              source:
+                input.source,
+
+              pages:
+                input.pages,
+
+              createdBy:
+                input.createdBy ?? null,
+
+              meta:
+                input.meta ?? {},
+            },
+          });
+
       try {
         await this.logAttachmentAudit({
-          action: 'ATTACHMENT_UPLOADED',
-          reportId: input.chemistryId,
-          attachmentId: attachment.id,
-          filename: input.file.originalname,
+          action:
+            'ATTACHMENT_UPLOADED',
+
+          reportId:
+            input.chemistryId,
+
+          attachmentId:
+            attachment.id,
+
+          filename:
+            input.file.originalname,
+
           checksum,
-          createdBy: input.createdBy ?? null,
+
+          createdBy:
+            input.createdBy ?? null,
         });
       } catch (e) {
-        console.error('Attachment audit failed', e);
+        console.error(
+          'Attachment audit failed',
+          e,
+        );
       }
-      return { ok: true, id: attachment.id };
+
+      return {
+        ok: true,
+        id: attachment.id,
+      };
     } catch (e: any) {
-      // Handle duplicate checksum (unique on [chemistryId, checksum])
       if (e.code === 'P2002') {
-        throw new ConflictException('Duplicate attachment already exists.');
+        throw new ConflictException(
+          'Duplicate attachment already exists.',
+        );
       }
+
       throw e;
     }
+  } finally {
+    if (isTemp) {
+      await fs
+        .unlink(filePath)
+        .catch(() => {});
+    }
   }
+}
+
+  // async create(input: CreateInput) {
+  //   const report = await this.prisma.chemistryReport.findUnique({
+  //     where: { id: input.chemistryId },
+  //     select: { id: true },
+  //   });
+  //   if (!report) throw new NotFoundException('Report not found');
+
+  //   // 👇 tolerate memory or disk
+  //   const { path: filePath, isTemp } = await this.ensureFilePath(input.file);
+
+  //   const checksum =
+  //     input.providedChecksum ?? (await this.sha256FromPath(filePath));
+
+  //   const duplicate = await this.prisma.chemistryAttachment.findFirst({
+  //     where: {
+  //       chemistryId: input.chemistryId,
+  //       checksum,
+  //     },
+  //     select: { id: true },
+  //   });
+
+  //   if (duplicate) {
+  //     if (isTemp) await fs.unlink(filePath).catch(() => {});
+  //     throw new ConflictException('Duplicate attachment already exists.');
+  //   }
+
+  //   const storageKey = await this.storage.put({
+  //     filePath,
+  //     filename: input.file.originalname,
+  //     subdir: `chemistry-reports/${input.chemistryId}`,
+  //   });
+
+  //   // If storage.put() copied (not renamed), we can delete any temp file
+  //   // (If it renamed, the original path no longer exists; unlink will just fail silently.)
+  //   if (isTemp) await fs.unlink(filePath).catch(() => {});
+
+  //   try {
+  //     const attachment = await this.prisma.chemistryAttachment.create({
+  //       data: {
+  //         chemistryId: input.chemistryId,
+  //         kind: input.kind,
+  //         filename: input.file.originalname,
+  //         storageKey,
+  //         storageDriver: 's3',
+  //         storageBucket: process.env.S3_BUCKET ?? null,
+  //         checksum,
+  //         source: input.source,
+  //         pages: input.pages,
+  //         createdBy: input.createdBy ?? null,
+  //         meta: input.meta ?? {},
+  //       },
+  //     });
+  //     try {
+  //       await this.logAttachmentAudit({
+  //         action: 'ATTACHMENT_UPLOADED',
+  //         reportId: input.chemistryId,
+  //         attachmentId: attachment.id,
+  //         filename: input.file.originalname,
+  //         checksum,
+  //         createdBy: input.createdBy ?? null,
+  //       });
+  //     } catch (e) {
+  //       console.error('Attachment audit failed', e);
+  //     }
+  //     return { ok: true, id: attachment.id };
+  //   } catch (e: any) {
+  //     // Handle duplicate checksum (unique on [chemistryId, checksum])
+  //     if (e.code === 'P2002') {
+  //       throw new ConflictException('Duplicate attachment already exists.');
+  //     }
+  //     throw e;
+  //   }
+  // }
 
   // ...listForReport/meta/stream unchanged
 

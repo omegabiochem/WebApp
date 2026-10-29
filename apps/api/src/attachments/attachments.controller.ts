@@ -1,7 +1,14 @@
 // attachments.controller.ts (keep exactly like this)
 import {
-  Controller, Post, Param, UploadedFile, UseInterceptors, Body, BadRequestException,
-  Get, Res,
+  Controller,
+  Post,
+  Param,
+  UploadedFile,
+  UseInterceptors,
+  Body,
+  BadRequestException,
+  Get,
+  Res,
   Req,
   Delete,
 } from '@nestjs/common';
@@ -13,6 +20,7 @@ import type { Express } from 'express';
 import express from 'express';
 
 import { AttachmentsService } from './attachments.service';
+import { MAX_ATTACHMENT_SIZE_BYTES, validateAttachmentType } from './attachment-upload.policy';
 
 type UploadMeta = {
   source?: string;
@@ -31,17 +39,38 @@ export class AttachmentsController {
   constructor(private readonly svc: AttachmentsService) {}
 
   @Post()
-  @UseInterceptors(FileInterceptor('file', {
-    storage: diskStorage({
-      destination: (_req, _file, cb) => cb(null, UPLOAD_ROOT),
-      filename: (_req, file, cb) => {
-        const ext = path.extname(file.originalname) || '.bin';
-        const base = path.basename(file.originalname, ext).replace(/[^\w.\-]/g, '_');
-        cb(null, `${Date.now()}_${base}${ext}`);
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => cb(null, UPLOAD_ROOT),
+
+        filename: (_req, file, cb) => {
+          const ext = path.extname(file.originalname) || '.bin';
+
+          const base = path
+            .basename(file.originalname, ext)
+            .replace(/[^\w.\-]/g, '_');
+
+          cb(null, `${Date.now()}_${base}${ext}`);
+        },
+      }),
+
+      limits: {
+        files: 1,
+        fileSize: MAX_ATTACHMENT_SIZE_BYTES,
+      },
+
+      fileFilter: (_req, file, cb) => {
+        try {
+          validateAttachmentType(file);
+
+          cb(null, true);
+        } catch (error) {
+          cb(error as Error, false);
+        }
       },
     }),
-    limits: { fileSize: 50 * 1024 * 1024 },
-  }))
+  )
   async upload(
     @Param('id') reportId: string,
     @UploadedFile() file: Express.Multer.File,
@@ -75,11 +104,10 @@ export class AttachmentsController {
     const { stream, mime, filename } = await this.svc.stream(attId);
     const inline = /^application\/pdf|^image\//.test(mime);
     res.type(mime);
-    res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${filename}"`);
+    res.setHeader(
+      'Content-Disposition',
+      `${inline ? 'inline' : 'attachment'}; filename="${filename}"`,
+    );
     stream.pipe(res);
   }
-
-
-
-  
 }
