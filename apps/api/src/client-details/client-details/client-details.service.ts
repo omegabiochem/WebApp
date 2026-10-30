@@ -104,8 +104,7 @@ export class ClientDetailsService {
 
     if (
       data.workflowReminderMaxCount !== undefined &&
-      (data.workflowReminderMaxCount < 1 ||
-        data.workflowReminderMaxCount > 10)
+      (data.workflowReminderMaxCount < 1 || data.workflowReminderMaxCount > 10)
     ) {
       throw new BadRequestException(
         'Reminder maximum must be between 1 and 10',
@@ -135,9 +134,7 @@ export class ClientDetailsService {
       copy.billingEnabled !== undefined &&
       typeof copy.billingEnabled !== 'boolean'
     ) {
-      throw new BadRequestException(
-        'billingEnabled must be true or false',
-      );
+      throw new BadRequestException('billingEnabled must be true or false');
     }
 
     /*
@@ -149,10 +146,7 @@ export class ClientDetailsService {
      * Date object
      */
     if (copy.billingStartAt !== undefined) {
-      if (
-        copy.billingStartAt === null ||
-        copy.billingStartAt === ''
-      ) {
+      if (copy.billingStartAt === null || copy.billingStartAt === '') {
         copy.billingStartAt = null;
       } else if (copy.billingStartAt instanceof Date) {
         if (Number.isNaN(copy.billingStartAt.getTime())) {
@@ -175,9 +169,7 @@ export class ClientDetailsService {
             : new Date(raw);
 
           if (Number.isNaN(parsed.getTime())) {
-            throw new BadRequestException(
-              'Invalid billingStartAt date',
-            );
+            throw new BadRequestException('Invalid billingStartAt date');
           }
 
           copy.billingStartAt = parsed;
@@ -254,9 +246,7 @@ export class ClientDetailsService {
     ];
 
     const filtered = Object.fromEntries(
-      Object.entries(input ?? {}).filter(([key]) =>
-        allowed.includes(key),
-      ),
+      Object.entries(input ?? {}).filter(([key]) => allowed.includes(key)),
     );
 
     return this.normalizeBillingFields(filtered);
@@ -419,10 +409,7 @@ export class ClientDetailsService {
      * This prevents existing/imported reports from accidentally
      * being captured later.
      */
-    if (
-      data.billingEnabled === true &&
-      data.billingStartAt == null
-    ) {
+    if (data.billingEnabled === true && data.billingStartAt == null) {
       data.billingStartAt = new Date();
     }
 
@@ -441,11 +428,7 @@ export class ClientDetailsService {
        * disable and logout its users.
        */
       if (data.active === false) {
-        await this.syncClientUsersActiveState(
-          tx,
-          clientCode,
-          false,
-        );
+        await this.syncClientUsersActiveState(tx, clientCode, false);
       }
 
       return created;
@@ -456,11 +439,7 @@ export class ClientDetailsService {
      UPDATE
   ========================================================= */
 
-  async update(
-    user: AuthUser,
-    clientCodeInput: string,
-    input: any,
-  ) {
+  async update(user: AuthUser, clientCodeInput: string, input: any) {
     this.assertManager(user);
 
     const clientCode = clientCodeInput.trim().toUpperCase();
@@ -481,24 +460,18 @@ export class ClientDetailsService {
 
     this.validateWorkingHours({
       workdayStartMinutes:
-        data.workdayStartMinutes ??
-        existing.workdayStartMinutes,
+        data.workdayStartMinutes ?? existing.workdayStartMinutes,
 
-      workdayEndMinutes:
-        data.workdayEndMinutes ??
-        existing.workdayEndMinutes,
+      workdayEndMinutes: data.workdayEndMinutes ?? existing.workdayEndMinutes,
 
-      workingDays:
-        data.workingDays ??
-        existing.workingDays,
+      workingDays: data.workingDays ?? existing.workingDays,
 
       workflowReminderIntervalMinutes:
         data.workflowReminderIntervalMinutes ??
         existing.workflowReminderIntervalMinutes,
 
       workflowReminderMaxCount:
-        data.workflowReminderMaxCount ??
-        existing.workflowReminderMaxCount,
+        data.workflowReminderMaxCount ?? existing.workflowReminderMaxCount,
     });
 
     /*
@@ -518,8 +491,7 @@ export class ClientDetailsService {
      * Therefore old reports do not suddenly enter billing.
      */
     const billingIsBeingEnabled =
-      data.billingEnabled === true &&
-      existing.billingEnabled === false;
+      data.billingEnabled === true && existing.billingEnabled === false;
 
     if (
       billingIsBeingEnabled &&
@@ -542,8 +514,7 @@ export class ClientDetailsService {
      */
 
     const activeWasChanged =
-      typeof data.active === 'boolean' &&
-      data.active !== existing.active;
+      typeof data.active === 'boolean' && data.active !== existing.active;
 
     let affectedUserIds: string[] = [];
 
@@ -559,13 +530,38 @@ export class ClientDetailsService {
         data: data as any,
       });
 
+      if (
+        data.workflowReminderEnabled === false &&
+        existing.workflowReminderEnabled !== false
+      ) {
+        const cancelled = await tx.workflowReminder.updateMany({
+          where: {
+            clientCode: {
+              equals: clientCode,
+              mode: 'insensitive',
+            },
+            resolvedAt: null,
+          },
+          data: {
+            resolvedAt: new Date(),
+            activeKey: null,
+            claimedAt: null,
+            claimKey: null,
+          },
+        });
+
+        console.log(
+          `[WORKFLOW REMINDERS] Disabled for ${clientCode}; ` +
+            `${cancelled.count} pending reminder(s) cancelled.`,
+        );
+      }
+
       if (activeWasChanged) {
-        affectedUserIds =
-          await this.syncClientUsersActiveState(
-            tx,
-            clientCode,
-            data.active as boolean,
-          );
+        affectedUserIds = await this.syncClientUsersActiveState(
+          tx,
+          clientCode,
+          data.active as boolean,
+        );
       }
 
       return result;
@@ -576,20 +572,14 @@ export class ClientDetailsService {
      *
      * Only AFTER that do we send socket events.
      */
-    if (
-      activeWasChanged &&
-      data.active === false
-    ) {
+    if (activeWasChanged && data.active === false) {
       console.log(
         `🚪 Client ${clientCode} deactivated. ` +
           `Force logging out ${affectedUserIds.length} users.`,
       );
 
       for (const userId of affectedUserIds) {
-        console.log(
-          '🚪 Force logout client user:',
-          userId,
-        );
+        console.log('🚪 Force logout client user:', userId);
 
         this.notificationGateway.emitForceLogoutToUser(
           userId,
@@ -605,10 +595,7 @@ export class ClientDetailsService {
      *
      * No socket logout needed.
      */
-    if (
-      activeWasChanged &&
-      data.active === true
-    ) {
+    if (activeWasChanged && data.active === true) {
       console.log(
         `✅ Client ${clientCode} reactivated. ` +
           `${affectedUserIds.length} users activated.`,
