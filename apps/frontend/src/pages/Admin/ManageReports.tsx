@@ -73,7 +73,6 @@ function fmtDate(x: string | null) {
   return `${Number(month)}/${Number(day)}/${year}`;
 }
 
-
 export default function ManageReports() {
   type MetricType =
     | "ALL"
@@ -131,7 +130,25 @@ export default function ManageReports() {
   async function loadClientCodes() {
     try {
       const res = await api<string[]>("/admin/client-codes");
-      setClientCodes(res?.length ? res : ["ALL"]);
+
+      const codes = Array.from(
+        new Set(
+          (res ?? [])
+            .map((code) =>
+              String(code ?? "")
+                .trim()
+                .toUpperCase(),
+            )
+            .filter(Boolean)
+            .map((code) =>
+              code.replace(/:APE_(REPORT|VALIDATION_REPORT)$/i, ""),
+            ),
+        ),
+      )
+        .filter((code) => code !== "ALL")
+        .sort();
+
+      setClientCodes(["ALL", ...codes]);
     } catch (e: any) {
       toast.error(e?.message || "Failed to load client codes");
     }
@@ -167,15 +184,15 @@ export default function ManageReports() {
     )}`;
   }
 
-function monthBounds(monthValue = calendarMonth) {
-  const [year, month] = monthValue.split("-").map(Number);
-  const last = new Date(year, month, 0);
+  function monthBounds(monthValue = calendarMonth) {
+    const [year, month] = monthValue.split("-").map(Number);
+    const last = new Date(year, month, 0);
 
-  return {
-    fromKey: makeDateKey(year, month, 1),
-    toKey: makeDateKey(year, month, last.getDate()),
-  };
-}
+    return {
+      fromKey: makeDateKey(year, month, 1),
+      toKey: makeDateKey(year, month, last.getDate()),
+    };
+  }
 
   async function loadDetail(
     metric: MetricType,
