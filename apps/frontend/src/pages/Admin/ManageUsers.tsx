@@ -2211,7 +2211,19 @@ function ClientsAdminTab() {
         api<ClientDetailsSummary[]>("/client-details"),
       ]);
 
-      setClients(clientRows);
+      const realClients = clientRows.filter((client) => {
+        const code = String(client.clientCode ?? "")
+          .trim()
+          .toUpperCase();
+
+        return (
+          code.length > 0 &&
+          !code.endsWith(":APE_REPORT") &&
+          !code.endsWith(":APE_VALIDATION_REPORT")
+        );
+      });
+
+      setClients(realClients);
       setDetails(detailRows);
     } catch (e: any) {
       toast.error(e?.message || "Failed to load clients");

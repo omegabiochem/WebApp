@@ -446,12 +446,28 @@ export class WorkflowReminderService {
   private async scheduleForTarget(
     targetSide: WorkflowReminderTargetSide,
     clientCode?: string | null,
-  ) {
-    if (targetSide === 'CLIENT') {
-      return this.clientSchedule(clientCode);
+  ): Promise<WorkSchedule> {
+    const omega = this.omegaSchedule();
+
+    // Client-level disable applies to ALL reminder recipients:
+    // CLIENT, LAB, and APPROVAL_TEAM.
+    const client = await this.clientSchedule(clientCode);
+
+    if (!client.enabled) {
+      return {
+        ...(targetSide === 'CLIENT' ? client : omega),
+        enabled: false,
+      };
     }
 
-    return this.omegaSchedule();
+    // Client recipients follow client-specific working hours.
+    if (targetSide === 'CLIENT') {
+      return client;
+    }
+
+    // Lab and approval-team recipients follow Omega hours,
+    // but only when reminders are enabled for this client.
+    return omega;
   }
 
   private async determineReminder(args: StatusChangeArgs): Promise<{
@@ -891,6 +907,13 @@ export class WorkflowReminderService {
         );
 
         if (!schedule.enabled) {
+          this.log.warn(
+            `[REMINDER STOPPED] Client=${reminder.clientCode ?? 'UNKNOWN'} ` +
+              `Form=${reminder.formNumber} ` +
+              `Target=${reminder.targetSide} ` +
+              `Reason=Client reminders disabled`,
+          );
+
           await this.resolveForSource(reminder.sourceType, reminder.sourceId);
 
           continue;
