@@ -483,24 +483,19 @@ export class MessagesService {
   async getLabInbox(viewerRole: UserRole, viewerUserId: string) {
     const visibleMessageFilter = messageVisibility(viewerRole, viewerUserId);
 
-    // 1) get ALL clients (one row per clientCode)
-    // If you can have multiple client users per clientCode, pick “primary” name/email or first one.
+    // 1) Enumerate client accounts independently of their individual users' names.
     const clientUsers = await this.prisma.user.findMany({
       where: { role: 'CLIENT', clientCode: { not: null } },
-      select: { clientCode: true, name: true, email: true },
+      select: { clientCode: true, email: true },
       orderBy: { clientCode: 'asc' },
     });
 
     // Deduplicate by clientCode
-    const clientMap = new Map<
-      string,
-      { name?: string | null; email?: string | null }
-    >();
+    const clientMap = new Map<string, { email?: string | null }>();
     for (const u of clientUsers) {
       if (!u.clientCode) continue;
       if (!clientMap.has(u.clientCode)) {
         clientMap.set(u.clientCode, {
-          name: u.name ?? null,
           email: u.email ?? null,
         });
       }
@@ -508,6 +503,18 @@ export class MessagesService {
     const clientCodes = Array.from(clientMap.keys());
 
     if (clientCodes.length === 0) return [];
+
+    // Header names come from the company record, never from User.name.
+    const companies = await this.prisma.clientDetails.findMany({
+      where: { clientCode: { in: clientCodes } },
+      select: { clientCode: true, name: true, legalName: true },
+    });
+    const companyNames = new Map(
+      companies.map((company) => [
+        company.clientCode,
+        company.name?.trim() || company.legalName?.trim() || null,
+      ]),
+    );
 
     // 2) fetch threads for those clients (even if no visible messages, thread still returned)
     const threads = await this.prisma.messageThread.findMany({
@@ -559,7 +566,7 @@ export class MessagesService {
         return {
           id: t?.id ?? null,
           clientCode,
-          clientName: info?.name ?? null,
+          clientName: companyNames.get(clientCode) ?? null,
           clientEmail: info?.email ?? null,
           lastMessage: t?.messages?.[0] ?? null,
           unreadCount,

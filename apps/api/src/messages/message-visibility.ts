@@ -40,6 +40,30 @@ export function labSenderAudience(senderRole: UserRole): UserRole[] {
   return [...LAB_ROLES];
 }
 
+// Older client messages stored only department tags, while new messages store
+// the expanded senior audience. Interpret both using the same hierarchy.
+function clientRoleVisibility(role: UserRole): Prisma.MessageWhereInput {
+  const ordinary: UserRole[] = LAB_ROLES.filter(
+    (target) => !OVERSIGHT.includes(target),
+  );
+  const bases: UserRole[] =
+    role === 'SYSTEMADMIN'
+      ? LAB_ROLES
+      : role === 'ADMIN'
+        ? [...ordinary, 'QA', 'ADMIN']
+        : role === 'QA'
+          ? [...ordinary, 'QA']
+          : [role];
+  if (!OVERSIGHT.includes(role)) return { mentions: { has: role } };
+  return {
+    OR: [
+      { mentions: { hasSome: bases } },
+      // Untagged legacy broadcasts used the default senior routing.
+      { isDirect: false, mentions: { isEmpty: true } },
+    ],
+  };
+}
+
 export function messageVisibility(
   role: UserRole,
   id: string,
@@ -65,7 +89,7 @@ export function messageVisibility(
       {
         forwardedFromMessageId: null,
         senderRole: 'CLIENT',
-        OR: [{ mentionedUserIds: { has: id } }, { mentions: { has: role } }],
+        OR: [{ mentionedUserIds: { has: id } }, clientRoleVisibility(role)],
       },
       { forwardedFromMessageId: null, senderRole: { in: labSenders } },
       {
