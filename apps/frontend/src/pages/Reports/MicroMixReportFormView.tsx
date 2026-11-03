@@ -563,7 +563,7 @@ export default function MicroMixReportFormView(props: MicroReportFormProps) {
   //     })
   //   : "";
 
-const qrValue = getReportQrUrl("MICRO_MIX", report?.id);
+  const qrValue = getReportQrUrl("MICRO_MIX", report?.id);
 
   // const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [qrSvg, setQrSvg] = useState<string>("");
@@ -1256,7 +1256,7 @@ const qrValue = getReportQrUrl("MICRO_MIX", report?.id);
                 className="grid grid-cols-[25%_55%_20%] border-b border-black text-[11px]"
               >
                 <div
-                  className={`py-[2px] px-2 border-r flex gap-2 items-center text-center relative ${dashClass("organism")}`}
+                  className={`py-[2px] px-2 border-r flex gap-2 items-center text-center relative ${dashClass(`pathogens:${p.key}:checked`)}`}
                 >
                   {/* Organism checkbox */}
                   <input

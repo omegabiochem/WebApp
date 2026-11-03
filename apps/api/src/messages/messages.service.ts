@@ -2,12 +2,22 @@ import { Injectable, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
 import { CreateMessageDto } from './create-message.dto';
 import { UserRole } from '@prisma/client';
+import {
+  messageVisibility,
+  mentionUserWhere,
+  clientEscalationRoles,
+  labSenderAudience,
+  forwardUserWhere,
+  forwardAudience,
+  LAB_ROLES,
+} from './message-visibility';
 import { MessageNotificationsService } from 'src/notifications/message-notifications.service';
 
 type JwtUser = {
   sub?: string;
   userId?: string;
   role: UserRole;
+  authMode?: 'NORMAL' | 'COMMON' | 'M2M';
   uid?: string | null;
   clientCode?: string | null;
 };
@@ -30,12 +40,30 @@ type InboxThreadDto = {
   unreadCount: number;
 };
 
-const PRIVILEGED: UserRole[] = ['ADMIN', 'QA', 'SYSTEMADMIN'];
-function getVisibleRoles(viewerRole: UserRole): UserRole[] {
-  if (viewerRole === 'MC') {
-    return ['MC', 'MICRO', 'CHEMISTRY'];
+// New forwards carry immutable text/note snapshots. Legacy forwards are split only
+// when the source matches exactly; ambiguous combined text stays unhighlighted.
+function forwardedParts(
+  body: string,
+  sourceBody: string | undefined,
+  snapshot?: { forwardNote?: string | null; forwardedText?: string | null },
+) {
+  if (typeof snapshot?.forwardedText === 'string') {
+    return {
+      forwardNote: snapshot.forwardNote || null,
+      forwardedText: snapshot.forwardedText,
+    };
   }
-  return [viewerRole];
+  if (sourceBody === undefined)
+    return { forwardNote: body || null, forwardedText: null };
+  if (!sourceBody) return { forwardNote: body || null, forwardedText: '' };
+  if (body === sourceBody) return { forwardNote: null, forwardedText: body };
+  const suffix = `\n\n${sourceBody}`;
+  if (body.endsWith(suffix))
+    return {
+      forwardNote: body.slice(0, -suffix.length) || null,
+      forwardedText: body.slice(-sourceBody.length),
+    };
+  return { forwardNote: body || null, forwardedText: null };
 }
 
 @Injectable()
@@ -44,6 +72,43 @@ export class MessagesService {
     private prisma: PrismaService,
     private readonly messageNotifications: MessageNotificationsService,
   ) {}
+
+  async mentionUsers(
+    user: JwtUser,
+    requestedCode?: string,
+    forwarding = false,
+  ) {
+    const id = user.userId ?? user.sub;
+    if (!id) throw new ForbiddenException('Auth userId missing');
+    const actor = await this.prisma.user.findUnique({ where: { id } });
+    if (!actor?.active) throw new ForbiddenException('Account unavailable');
+    const effectiveRole = user.authMode === 'COMMON' ? user.role : actor.role;
+    const labRoles: UserRole[] = [
+      'MICRO',
+      'CHEMISTRY',
+      'MC',
+      'QA',
+      'FRONTDESK',
+      'ADMIN',
+      'SYSTEMADMIN',
+    ];
+    if (effectiveRole !== 'CLIENT' && !labRoles.includes(effectiveRole))
+      throw new ForbiddenException('Not allowed');
+    const clientCode =
+      effectiveRole === 'CLIENT' ? actor.clientCode : requestedCode;
+    if (!clientCode) throw new ForbiddenException('clientCode required');
+    const users = await this.prisma.user.findMany({
+      where: {
+        ...(forwarding
+          ? forwardUserWhere(clientCode)
+          : mentionUserWhere(effectiveRole, clientCode)),
+        ...(forwarding ? { id: { not: id } } : {}),
+      },
+      select: { id: true, name: true, email: true, role: true },
+      orderBy: [{ name: 'asc' }, { email: 'asc' }],
+    });
+    return { users };
+  }
 
   async getOrCreateThread(args: {
     clientCode: string;
@@ -76,8 +141,21 @@ export class MessagesService {
     // ✅ get sender name once (store snapshot for audit/history)
     const sender = await this.prisma.user.findUnique({
       where: { id: senderId },
-      select: { name: true, email: true },
+      select: {
+        name: true,
+        email: true,
+        role: true,
+        clientCode: true,
+        active: true,
+      },
     });
+
+    if (!sender?.active) throw new ForbiddenException('Account unavailable');
+    user = {
+      ...user,
+      role: user.authMode === 'COMMON' ? user.role : sender.role,
+      clientCode: sender.clientCode,
+    };
 
     const senderName =
       (sender?.name ?? '').trim() || (sender?.email ?? '').trim() || null;
@@ -87,20 +165,68 @@ export class MessagesService {
     if (user.role === 'CLIENT') {
       if (!user.clientCode) throw new ForbiddenException('Client code missing');
       clientCode = user.clientCode;
-
-      // ✅ client must tag who they want to talk to
-      // if nothing selected, default FRONTDESK
-      if (!dto.mentions || dto.mentions.length === 0) {
-        dto.mentions = ['FRONTDESK'];
-      }
     } else {
       if (!dto.clientCode)
         throw new ForbiddenException('clientCode required for lab users');
       clientCode = dto.clientCode;
-
-      // lab can send without mentions (admin/qa can broadcast)
-      dto.mentions = dto.mentions ?? [];
     }
+
+    if (user.role !== 'CLIENT' && !LAB_ROLES.includes(user.role))
+      throw new ForbiddenException('Not allowed');
+    const forwarding = Boolean(dto.forwardedFromMessageId);
+    if (!forwarding && dto.forwardToRoles?.length)
+      throw new ForbiddenException('Forward source required');
+    if (forwarding && (dto.replyToMessageId || dto.attachments)) {
+      throw new ForbiddenException(
+        'Forward source content is copied by the server; replies and new attachments cannot be combined',
+      );
+    }
+    const eligible = await this.mentionUsers(user, clientCode, forwarding);
+    const requested = [...new Set(dto.mentionedUserIds ?? [])];
+    if (requested.some((id) => !eligible.users.some((u) => u.id === id)))
+      throw new ForbiddenException(
+        'Mentioned user is unavailable for this conversation',
+      );
+    const mentionedUserIds = requested;
+    const isDirect = forwarding || mentionedUserIds.length > 0;
+    const selectedRoles = eligible.users
+      .filter((u) => requested.includes(u.id))
+      .map((u) => u.role);
+    const forwardRoles = [...new Set(dto.forwardToRoles ?? [])];
+    if (
+      forwarding &&
+      ((!forwardRoles.length && !requested.length) ||
+        forwardRoles.some((role) => !LAB_ROLES.includes(role)))
+    ) {
+      throw new ForbiddenException('Select at least one person or lab role');
+    }
+    const selectedUsers = eligible.users.filter((person) =>
+      requested.includes(person.id),
+    );
+    const labOnly =
+      forwarding && !selectedUsers.some((person) => person.role === 'CLIENT');
+    const labAudienceRoles = forwarding
+      ? forwardAudience(user.role, selectedUsers, forwardRoles)
+      : user.role === 'CLIENT'
+        ? clientEscalationRoles(selectedRoles)
+        : labSenderAudience(user.role);
+    const source = forwarding
+      ? await this.prisma.message.findFirst({
+          where: {
+            id: dto.forwardedFromMessageId,
+            thread: {
+              clientCode,
+              reportId: dto.reportId ?? null,
+              chemistryId: dto.chemistryId ?? null,
+            },
+            AND: [messageVisibility(user.role, senderId)],
+          },
+        })
+      : null;
+    if (forwarding && !source)
+      throw new ForbiddenException(
+        'Forward source unavailable in this conversation',
+      );
 
     const thread = await this.getOrCreateThread({
       clientCode,
@@ -113,21 +239,41 @@ export class MessagesService {
     if (replyToMessageId) {
       const target = await this.prisma.message.findUnique({
         where: { id: replyToMessageId },
-        select: { id: true, threadId: true },
+        select: {
+          id: true,
+          threadId: true,
+          isDirect: true,
+          senderId: true,
+          mentionedUserIds: true,
+          deletedAt: true,
+        },
       });
 
       if (!target) {
         throw new ForbiddenException('Reply target not found');
       }
 
+      const visibleTarget = await this.prisma.message.findFirst({
+        where: {
+          id: replyToMessageId,
+          AND: [messageVisibility(user.role, senderId)],
+        },
+      });
+      if (!visibleTarget)
+        throw new ForbiddenException('Reply target unavailable');
+      // Visibility of quoted parents is checked separately for every viewer below.
       if (target.threadId !== thread.id) {
         throw new ForbiddenException('Reply must belong to the same thread');
       }
     }
 
-    const cleanBody = String(dto.body ?? '').trim();
+    const note = String(dto.body ?? '').trim();
+    const cleanBody = source
+      ? [note, source.body].filter(Boolean).join('\n\n')
+      : note;
+    const outgoingAttachments = source ? source.attachments : dto.attachments;
     const hasAttachments =
-      Array.isArray(dto.attachments) && dto.attachments.length > 0;
+      Array.isArray(outgoingAttachments) && outgoingAttachments.length > 0;
 
     if (!cleanBody && !hasAttachments) {
       throw new ForbiddenException('Message body or attachment is required');
@@ -140,13 +286,31 @@ export class MessagesService {
         senderRole: user.role,
         senderName,
         body: cleanBody,
-        mentions: dto.mentions ?? [],
-        attachments: dto.attachments,
+        mentions: labAudienceRoles,
+        mentionedUserIds,
+        isDirect,
+        ...(source
+          ? source.attachments === null
+            ? {}
+            : {
+                attachments:
+                  source.attachments as import('@prisma/client').Prisma.InputJsonValue,
+              }
+          : { attachments: dto.attachments }),
+        forwardedFromMessageId: source?.id ?? null,
+        ...(source
+          ? { forwardNote: note || null, forwardedText: source.body }
+          : {}),
         replyToMessageId,
       },
     });
 
     await this.messageNotifications.onMessageCreated({
+      mentionedUserIds,
+      isDirect,
+      labAudienceRoles,
+      labOnly,
+      isForward: forwarding,
       messageId: created.id,
       threadId: thread.id,
       senderId,
@@ -154,7 +318,7 @@ export class MessagesService {
       senderName,
       clientCode,
       body: created.body,
-      mentions: dto.mentions ?? [],
+      mentions: labAudienceRoles,
       reportId: dto.reportId ?? null,
       chemistryId: dto.chemistryId ?? null,
     });
@@ -168,43 +332,11 @@ export class MessagesService {
     reportId?: string;
     chemistryId?: string;
     viewerRole: UserRole;
+    viewerUserId: string;
   }) {
     if (!args.clientCode) throw new ForbiddenException('clientCode required');
 
-    const viewerRole = args.viewerRole;
-    const visibleRoles = getVisibleRoles(viewerRole);
-
-    const canSeeAll =
-      viewerRole === 'CLIENT' || PRIVILEGED.includes(viewerRole);
-
-    const messageWhere = canSeeAll
-      ? undefined
-      : {
-          OR: [
-            // anything explicitly tagged to this role set
-            { mentions: { hasSome: visibleRoles } },
-
-            // messages sent by any visible lab role
-            { senderRole: { in: visibleRoles } },
-
-            // allow ADMIN/QA broadcasts to be visible to all lab roles
-            { senderRole: { in: ['ADMIN', 'QA', 'SYSTEMADMIN'] } },
-          ],
-        };
-
-    // const thread = await this.prisma.messageThread.findFirst({
-    //   where: {
-    //     clientCode: args.clientCode,
-    //     reportId: args.reportId ?? null,
-    //     chemistryId: args.chemistryId ?? null,
-    //   },
-    //   include: {
-    //     messages: {
-    //       where: messageWhere as any,
-    //       orderBy: { createdAt: 'asc' },
-    //     },
-    //   },
-    // });
+    const messageWhere = messageVisibility(args.viewerRole, args.viewerUserId);
 
     const thread = await this.prisma.messageThread.findFirst({
       where: {
@@ -221,6 +353,13 @@ export class MessagesService {
           orderBy: { createdAt: 'asc' },
           select: {
             id: true,
+            senderId: true,
+            mentionedUserIds: true,
+            mentions: true,
+            isDirect: true,
+            forwardedFromMessageId: true,
+            forwardNote: true,
+            forwardedText: true,
             body: true,
             senderRole: true,
             senderName: true, // ✅
@@ -230,6 +369,10 @@ export class MessagesService {
             replyTo: {
               select: {
                 id: true,
+                senderId: true,
+                isDirect: true,
+                mentionedUserIds: true,
+                deletedAt: true,
                 body: true,
                 senderRole: true,
                 senderName: true,
@@ -241,22 +384,104 @@ export class MessagesService {
       },
     });
 
-    return thread ?? { messages: [] };
+    if (!thread) return { messages: [] };
+    // Resolve only recipient IDs belonging to messages this viewer may read.
+    // Disabled accounts remain identifiable in message history.
+    const recipientIds = [
+      ...new Set(
+        thread.messages.flatMap((message) => message.mentionedUserIds),
+      ),
+    ];
+    const recipients = recipientIds.length
+      ? await this.prisma.user.findMany({
+          where: {
+            id: { in: recipientIds },
+            OR: [
+              { role: 'CLIENT', clientCode: args.clientCode },
+              { role: { in: LAB_ROLES } },
+            ],
+          },
+          select: { id: true, name: true, email: true, role: true },
+        })
+      : [];
+    const recipientById = new Map(
+      recipients.map((person) => [person.id, person]),
+    );
+    const forwardIds = [
+      ...new Set(
+        thread.messages
+          .filter((m) => m.forwardedText == null)
+          .map((m) => m.forwardedFromMessageId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const forwardSources = forwardIds.length
+      ? await this.prisma.message.findMany({
+          where: { id: { in: forwardIds }, threadId: thread.id },
+          select: { id: true, body: true },
+        })
+      : [];
+    const forwardSourceById = new Map(
+      forwardSources.map((source) => [source.id, source.body]),
+    );
+    const parentIds = [
+      ...new Set(
+        thread.messages
+          .map((m) => m.replyTo?.id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const visibleParents = parentIds.length
+      ? await this.prisma.message.findMany({
+          where: { id: { in: parentIds }, AND: [messageWhere] },
+          select: { id: true },
+        })
+      : [];
+    const visibleParentIds = new Set(visibleParents.map((parent) => parent.id));
+    return {
+      ...thread,
+      messages: thread.messages.map((m) => {
+        const parent = m.replyTo;
+        return {
+          ...m,
+          isOwn: m.senderId === args.viewerUserId,
+          ...(m.forwardedFromMessageId
+            ? forwardedParts(
+                m.body,
+                forwardSourceById.get(m.forwardedFromMessageId),
+                m,
+              )
+            : {}),
+          taggedRecipients: m.mentionedUserIds.map((id) => {
+            const person = recipientById.get(id);
+            return {
+              id,
+              name: person?.name?.trim() || person?.email || 'Unavailable user',
+              email: person?.email ?? null,
+              role: person?.role ?? null,
+            };
+          }),
+          labAudienceRoles:
+            m.forwardedFromMessageId || m.senderRole === 'CLIENT'
+              ? m.mentions
+              : labSenderAudience(m.senderRole),
+          replyTo:
+            parent && visibleParentIds.has(parent.id)
+              ? {
+                  id: parent.id,
+                  body: parent.body,
+                  senderRole: parent.senderRole,
+                  senderName: parent.senderName,
+                  createdAt: parent.createdAt,
+                }
+              : null,
+        };
+      }),
+    };
   }
 
   async getLabInbox(viewerRole: UserRole, viewerUserId: string) {
-    const canSeeAll = PRIVILEGED.includes(viewerRole);
-    const visibleRoles = getVisibleRoles(viewerRole);
-
-    const visibleMessageFilter = canSeeAll
-      ? undefined
-      : {
-          OR: [
-            { mentions: { hasSome: visibleRoles } },
-            { senderRole: { in: visibleRoles } },
-            { senderRole: { in: ['ADMIN', 'QA', 'SYSTEMADMIN'] } },
-          ],
-        };
+    const visibleMessageFilter = messageVisibility(viewerRole, viewerUserId);
 
     // 1) get ALL clients (one row per clientCode)
     // If you can have multiple client users per clientCode, pick “primary” name/email or first one.
@@ -324,7 +549,7 @@ export class MessagesService {
                 threadId: t.id,
                 ...(visibleMessageFilter ? (visibleMessageFilter as any) : {}),
                 createdAt: { gt: lastReadAt },
-                senderRole: 'CLIENT',
+                senderId: { not: viewerUserId },
               } as any,
             })
           : 0;
@@ -370,6 +595,7 @@ export class MessagesService {
         where: { clientCode: user.clientCode },
         include: {
           messages: {
+            where: messageVisibility(user.role, viewerUserId),
             take: 1,
             orderBy: { createdAt: 'desc' },
             select: {
@@ -396,6 +622,7 @@ export class MessagesService {
           const unreadCount = await this.prisma.message.count({
             where: {
               threadId: t.id,
+              AND: [messageVisibility(user.role, viewerUserId)],
               createdAt: { gt: lastReadAt },
               senderId: { not: viewerUserId }, // not sent by me
             },
@@ -475,9 +702,13 @@ export class MessagesService {
 
     const msg = await this.prisma.message.findUnique({
       where: { id: messageId },
-      select: { id: true, senderId: true },
+      select: { id: true, senderId: true, forwardedFromMessageId: true },
     });
     if (!msg) throw new ForbiddenException('Message not found');
+    if (msg.forwardedFromMessageId)
+      throw new ForbiddenException(
+        'Forwarded copies cannot be edited; send a new forward',
+      );
 
     const isOwner = msg.senderId === viewerUserId;
     if (!isOwner) throw new ForbiddenException('Not allowed');

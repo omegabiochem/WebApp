@@ -36,7 +36,12 @@ import ApeReportView from "../LabReports/ApeReportView";
 
 type BillingInvoiceStatus = "DRAFT" | "CONFIRMED" | "SENT" | "VOID";
 type BillingInvoiceKind = "REPORT" | "MANUAL";
-type BillingTab = "OVERVIEW" | "INVOICES" | "UNBILLED" | "PRICING";
+type BillingTab =
+  | "OVERVIEW"
+  | "INVOICES"
+  | "UNBILLED"
+  | "PRICING"
+  | "PAID_PAYMENTS";
 type PricingMethod = "INDIVIDUAL" | "COMBINATION";
 type BillingViewPane = "FORM" | "REPORT" | "ATTACHMENTS";
 type BillingApeReportTab = "APE_VALIDATION_REPORT" | "APE_REPORT";
@@ -62,7 +67,13 @@ type BillingActionDialog =
   | { kind: "CONFIRM" }
   | { kind: "REOPEN" }
   | { kind: "REVISE" }
-  | { kind: "SEND"; toEmail: string; sendPdf: boolean; sendExcel: boolean }
+  | {
+      kind: "SEND";
+      toEmail: string;
+      ccEmails?: string[];
+      sendPdf: boolean;
+      sendExcel: boolean;
+    }
   | {
       kind: "SCHEDULE";
       toEmail: string;
@@ -334,6 +345,7 @@ type InvoiceDetail = InvoiceRow & {
   manualLines: BillingManualInvoiceLine[];
   emails: BillingEmailHistory[];
   extraCharges: BillingInvoiceExtraCharge[];
+  usedEmailSuggestions?: string[];
   extraChargeSuggestions?: BillingExtraChargeSuggestion[];
   revisionRootId?: string;
   revisionHistory?: InvoiceRevisionHistoryRow[];
@@ -1529,6 +1541,236 @@ function getInitialBillingFilters(
   return defaults;
 }
 
+type PaidInvoiceRow = { invoice: InvoiceRow; summary: InvoicePaymentSummary };
+
+function PaidPaymentsTab({ onView }: { onView: (id: string) => void }) {
+  const [rows, setRows] = useState<PaidInvoiceRow[]>([]);
+  const [busy, setBusy] = useState(true);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [includePartial, setIncludePartial] = useState(false);
+  const [month, setMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const [refresh, setRefresh] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setBusy(true);
+      setError("");
+      setRows([]);
+      try {
+        const invoices: InvoiceRow[] = [];
+        // Read every page for this billing month, independent of the Invoices tab page.
+        for (let page = 1; ; page += 1) {
+          const query = new URLSearchParams({
+            month,
+            page: String(page),
+            perPage: "100",
+          });
+          const result = await api<InvoiceListResponse>(
+            `/billing/invoices?${query}`,
+          );
+          if (cancelled) return;
+          invoices.push(
+            ...result.items.filter(
+              (invoice) =>
+                invoice.status !== "VOID" && invoice.status !== "DRAFT",
+            ),
+          );
+          if (page >= result.pages || result.items.length === 0) break;
+        }
+        const loaded: PaidInvoiceRow[] = [];
+        // Bound concurrent requests while using the existing payment summary API.
+        for (let offset = 0; offset < invoices.length; offset += 6) {
+          const batch = await Promise.all(
+            invoices.slice(offset, offset + 6).map(async (invoice) => ({
+              invoice,
+              summary: await api<InvoicePaymentSummary>(
+                `/billing/invoices/${invoice.id}/payments`,
+              ),
+            })),
+          );
+          if (cancelled) return;
+          loaded.push(...batch);
+        }
+        setRows(loaded);
+      } catch (err: any) {
+        if (!cancelled) setError(extractMessage(err));
+      } finally {
+        if (!cancelled) setBusy(false);
+      }
+    }
+    if (month) void load();
+    else setBusy(false);
+    return () => {
+      cancelled = true;
+    };
+  }, [month, refresh]);
+
+  const visible = rows.filter(({ invoice, summary }) => {
+    const eligible =
+      summary.paymentStatus === "PAID" ||
+      (includePartial && summary.paymentStatus === "PARTIALLY_PAID");
+    const text =
+      `${invoice.invoiceNumber ?? ""} ${invoice.clientCode} ${invoice.clientName ?? ""}`.toLowerCase();
+    return eligible && text.includes(search.trim().toLowerCase());
+  });
+  const total = (field: "total" | "paid" | "balance") =>
+    visible.reduce((sum, row) => sum + Number(row.summary[field] || 0), 0);
+
+  return (
+    <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="font-semibold text-slate-900">Paid Payments</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Track payments by invoice billing month. Reversed payments are
+            excluded from payment totals.
+          </p>
+        </div>
+        <Button
+          variant="secondary"
+          disabled={busy || !month}
+          onClick={() => setRefresh((value) => value + 1)}
+        >
+          <RefreshCcw className="h-4 w-4" />
+          Refresh
+        </Button>
+      </div>
+      <div className="flex flex-wrap items-end gap-4">
+        <label className="text-xs font-semibold text-slate-600">
+          Billing month
+          <input
+            type="month"
+            value={month}
+            onChange={(event) => setMonth(event.target.value)}
+            className="mt-1 block h-10 rounded-lg border border-slate-300 px-3 text-sm"
+          />
+        </label>
+        <label className="flex-1 text-xs font-semibold text-slate-600">
+          Search invoice or client
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Invoice number, client code or name"
+            className="mt-1 block h-10 w-full rounded-lg border border-slate-300 px-3 text-sm"
+          />
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={includePartial}
+            onChange={(event) => setIncludePartial(event.target.checked)}
+          />
+          Include partial payments
+        </label>
+      </div>
+      {busy ? (
+        <div role="status" className="p-8 text-center">
+          Loading payments…
+        </div>
+      ) : error ? (
+        <div role="alert" className="rounded-lg bg-rose-50 p-4 text-rose-700">
+          Unable to load payments: {error}. Use Refresh to retry.
+        </div>
+      ) : !month ? (
+        <p>Select a billing month.</p>
+      ) : (
+        <>
+          <div className="grid gap-3 sm:grid-cols-4">
+            {[
+              ["Invoices", String(visible.length)],
+              ["Invoice total", money(total("total"))],
+              ["Amount paid", money(total("paid"))],
+              ["Balance remaining", money(total("balance"))],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-lg bg-slate-50 p-3">
+                <div className="text-xs text-slate-500">{label}</div>
+                <div className="mt-1 text-lg font-semibold">{value}</div>
+              </div>
+            ))}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                <tr>
+                  {[
+                    "Invoice",
+                    "Client",
+                    "Invoice total",
+                    "Paid",
+                    "Balance",
+                    "Status",
+                    "Latest payment",
+                    "",
+                  ].map((heading, index) => (
+                    <th key={index} className="px-3 py-3">
+                      {heading}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {visible.map(({ invoice, summary }) => {
+                  const latest = summary.payments
+                    .filter((payment) => !payment.reversedAt)
+                    .sort(
+                      (a, b) =>
+                        new Date(b.paidAt).getTime() -
+                        new Date(a.paidAt).getTime(),
+                    )[0];
+                  return (
+                    <tr key={invoice.id}>
+                      <td className="px-3 py-3 font-medium">
+                        {invoice.invoiceNumber || "—"}
+                      </td>
+                      <td className="px-3 py-3">
+                        {invoice.clientName || invoice.clientCode}
+                        <div className="text-xs text-slate-500">
+                          {invoice.clientCode}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">{money(summary.total)}</td>
+                      <td className="px-3 py-3 text-emerald-700">
+                        {money(summary.paid)}
+                      </td>
+                      <td className="px-3 py-3">{money(summary.balance)}</td>
+                      <td className="px-3 py-3">
+                        {nice(summary.paymentStatus)}
+                      </td>
+                      <td className="px-3 py-3">
+                        {latest ? formatDate(latest.paidAt) : "—"}
+                      </td>
+                      <td className="px-3 py-3">
+                        <Button
+                          variant="secondary"
+                          onClick={() => onView(invoice.id)}
+                        >
+                          View
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!visible.length && (
+                  <tr>
+                    <td colSpan={8} className="p-8 text-center text-slate-500">
+                      No matching paid invoices for this billing month.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 export default function BillingDashboard() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -2263,8 +2505,8 @@ export default function BillingDashboard() {
   ]);
 
   const managerTabs: BillingTab[] = isManager
-    ? ["OVERVIEW", "UNBILLED", "INVOICES", "PRICING"]
-    : ["OVERVIEW", "UNBILLED", "INVOICES"];
+    ? ["OVERVIEW", "UNBILLED", "INVOICES", "PAID_PAYMENTS", "PRICING"]
+    : ["OVERVIEW", "UNBILLED", "INVOICES", "PAID_PAYMENTS"];
 
   const baseQuery = useMemo(() => {
     const params = new URLSearchParams();
@@ -3640,6 +3882,29 @@ export default function BillingDashboard() {
     }
   }
 
+  // Keep suggestions scoped to the selected invoice's existing history.
+  const usedBillingEmails = useMemo(() => {
+    const addresses = new Map<string, string>();
+    const add = (value: unknown) => {
+      if (typeof value !== "string") return;
+      value.split(/[;,\n]+/).forEach((part) => {
+        const email = part.trim();
+        if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          const key = email.toLowerCase();
+          if (!addresses.has(key)) addresses.set(key, email);
+        }
+      });
+    };
+    add(invoiceDetail?.billingEmail);
+    invoiceDetail?.usedEmailSuggestions?.forEach(add);
+    for (const entry of invoiceDetail?.emails ?? []) {
+      add(entry.toEmail);
+      if (Array.isArray(entry.ccEmails)) entry.ccEmails.forEach(add);
+      else add(entry.ccEmails);
+    }
+    return Array.from(addresses.values());
+  }, [invoiceDetail]);
+
   function sendInvoice() {
     if (!invoiceDetail) return;
 
@@ -3664,6 +3929,18 @@ export default function BillingDashboard() {
       return;
     }
 
+    const ccEmails = (actionDialog.ccEmails ?? [])
+      .map((email) => email.trim())
+      .filter(Boolean);
+    if (
+      [toEmail || defaultEmail, ...ccEmails].some(
+        (email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
+      )
+    ) {
+      toast.error("Enter valid recipient and CC email addresses");
+      return;
+    }
+
     if (!actionDialog.sendPdf && !actionDialog.sendExcel) {
       toast.error("Select PDF, Excel, or both");
       return;
@@ -3680,6 +3957,10 @@ export default function BillingDashboard() {
           method: "POST",
           body: JSON.stringify({
             ...(toEmail ? { toEmail } : {}),
+            ccEmails: ccEmails.filter(
+              (email) =>
+                email.toLowerCase() !== (toEmail || defaultEmail).toLowerCase(),
+            ),
             resend: isResend,
           }),
         },
@@ -6496,6 +6777,14 @@ export default function BillingDashboard() {
           </div>
         )}
 
+        {tab === "PAID_PAYMENTS" && (
+          <PaidPaymentsTab
+            onView={(id) => {
+              void openInvoice(id);
+            }}
+          />
+        )}
+
         {tab === "INVOICES" && (
           <div className="space-y-5">
             {renderBillingFilterSection("INVOICES")}
@@ -8498,45 +8787,56 @@ export default function BillingDashboard() {
                                           />
                                         </td>
                                       )}
-                                    <td className="px-4 py-3 font-medium">
-                                      <div>{line.formNumber}</div>
-                                      {isPreviousMonthImported && (
-                                        <span className="mt-1 inline-flex rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
-                                          Previous month
-                                        </span>
-                                      )}
-                                    </td>
+                                    {isFirstSourceLine ? (
+                                      <>
+                                        <td className="px-4 py-3 font-medium">
+                                          <div>{line.formNumber}</div>
+                                          {isPreviousMonthImported && (
+                                            <span className="mt-1 inline-flex rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                                              Previous month
+                                            </span>
+                                          )}
+                                        </td>
 
-                                    <td className="px-4 py-3">
-                                      {line.reportNumber}
-                                    </td>
+                                        <td className="px-4 py-3">
+                                          {line.reportNumber}
+                                        </td>
 
-                                    <td className="px-4 py-3">
-                                      {nice(line.formType)}
-                                    </td>
+                                        <td className="px-4 py-3">
+                                          {nice(line.formType)}
+                                        </td>
 
-                                    <td className="px-4 py-3">
-                                      {billingSampleTypesFromSnapshot(
-                                        line.sourceSnapshot,
-                                      ).length > 0 ? (
-                                        <div className="flex max-w-[200px] flex-wrap gap-1.5">
+                                        <td className="px-4 py-3">
                                           {billingSampleTypesFromSnapshot(
                                             line.sourceSnapshot,
-                                          ).map((sampleType) => (
-                                            <span
-                                              key={sampleType}
-                                              className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-medium text-cyan-800"
-                                            >
-                                              {sampleType}
+                                          ).length > 0 ? (
+                                            <div className="flex max-w-[200px] flex-wrap gap-1.5">
+                                              {billingSampleTypesFromSnapshot(
+                                                line.sourceSnapshot,
+                                              ).map((sampleType) => (
+                                                <span
+                                                  key={sampleType}
+                                                  className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-medium text-cyan-800"
+                                                >
+                                                  {sampleType}
+                                                </span>
+                                              ))}
+                                            </div>
+                                          ) : (
+                                            <span className="text-xs text-slate-400">
+                                              -
                                             </span>
-                                          ))}
-                                        </div>
-                                      ) : (
-                                        <span className="text-xs text-slate-400">
-                                          -
-                                        </span>
-                                      )}
-                                    </td>
+                                          )}
+                                        </td>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <td className="px-4 py-3" />
+                                        <td className="px-4 py-3" />
+                                        <td className="px-4 py-3" />
+                                        <td className="px-4 py-3" />
+                                      </>
+                                    )}
 
                                     <td className="px-4 py-3">
                                       <div>
@@ -10894,6 +11194,76 @@ export default function BillingDashboard() {
                     )}
                   </div>
 
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <div className="text-xs font-semibold text-slate-600">
+                      Previously used emails
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Add an address as a CC recipient, or as the primary
+                      recipient when that field is empty.
+                    </p>
+                    {usedBillingEmails.length === 0 ? (
+                      <p className="mt-3 text-sm text-slate-500">
+                        No saved email addresses for this invoice.
+                      </p>
+                    ) : (
+                      <ul className="mt-3 max-h-48 space-y-2 overflow-y-auto">
+                        {usedBillingEmails.map((email) => {
+                          const selected =
+                            actionDialog.toEmail.trim().toLowerCase() ===
+                              email.toLowerCase() ||
+                            (actionDialog.ccEmails ?? []).some(
+                              (cc) => cc.toLowerCase() === email.toLowerCase(),
+                            );
+                          return (
+                            <li
+                              key={email.toLowerCase()}
+                              className="flex items-center justify-between gap-3"
+                            >
+                              <span className="min-w-0 break-all text-sm text-slate-700">
+                                {email}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={!!working || selected}
+                                aria-label={`Add ${email} as recipient`}
+                                onClick={() =>
+                                  setActionDialog((current) =>
+                                    current?.kind === "SEND"
+                                      ? current.toEmail.trim()
+                                        ? {
+                                            ...current,
+                                            ccEmails: [
+                                              ...(
+                                                current.ccEmails ?? []
+                                              ).filter(
+                                                (cc) =>
+                                                  cc.toLowerCase() !==
+                                                  email.toLowerCase(),
+                                              ),
+                                              email,
+                                            ],
+                                          }
+                                        : { ...current, toEmail: email }
+                                      : current,
+                                  )
+                                }
+                                className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                              >
+                                {selected ? (
+                                  <CheckCircle2 className="h-3.5 w-3.5" />
+                                ) : (
+                                  <Plus className="h-3.5 w-3.5" />
+                                )}
+                                {selected ? "Added" : "Add"}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+
                   <label className="block">
                     <span className="mb-1.5 block text-xs font-semibold text-slate-600">
                       Recipient Email
@@ -10911,6 +11281,39 @@ export default function BillingDashboard() {
                       className="h-11 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       placeholder="billing@example.com"
                     />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                      CC recipients (comma separated)
+                    </span>
+                    <input
+                      type="text"
+                      value={(actionDialog.ccEmails ?? []).join(", ")}
+                      onChange={(e) =>
+                        setActionDialog({
+                          ...actionDialog,
+                          ccEmails: e.target.value.split(","),
+                        })
+                      }
+                      onBlur={() =>
+                        setActionDialog({
+                          ...actionDialog,
+                          ccEmails: Array.from(
+                            new Set(
+                              (actionDialog.ccEmails ?? [])
+                                .map((email) => email.trim().toLowerCase())
+                                .filter(Boolean),
+                            ),
+                          ),
+                        })
+                      }
+                      className="h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"
+                      placeholder="accounts@example.com, manager@example.com"
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Edit this field to add or remove CC recipients. Recipients
+                      can see each other's addresses.
+                    </p>
                   </label>
                 </>
               )}

@@ -24,13 +24,35 @@ type InboxLastMessage = {
 };
 
 type Thread = {
-  id: string;
+  id: string | null;
   clientCode: string;
+  clientName?: string | null;
   lastMessage: InboxLastMessage | null;
   unreadCount: number;
 };
 
+type MentionUser = {
+  id: string;
+  name: string | null;
+  email: string;
+  role: string;
+};
+
 type Message = {
+  forwardNote?: string | null;
+  forwardedText?: string | null;
+  taggedRecipients?: {
+    id: string;
+    name: string;
+    email: string | null;
+    role: string | null;
+  }[];
+  labAudienceRoles?: string[];
+  forwardedFromMessageId?: string | null;
+  isOwn?: boolean;
+  senderId?: string;
+  mentionedUserIds?: string[];
+  isDirect?: boolean;
   id: string;
   body: string;
   senderRole: string;
@@ -82,6 +104,14 @@ type ChatAttachment =
       chemistryId?: string;
     };
 
+// Soft hyphens appear only where the browser wraps a long token.
+// The stored/searchable/copied message stays unchanged.
+function wrapLongWords(text: string) {
+  return text.replace(/[A-Za-z0-9]{24,}/g, (word) =>
+    word.split("").join("\u00ad"),
+  );
+}
+
 function toDateKey(d: Date) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -122,7 +152,19 @@ type RenderItem =
   | { type: "msg"; msg: Message };
 
 export default function OmegaChatBox() {
+  return <AuthenticatedChat />;
+}
+
+function AuthenticatedChat() {
   const { user } = useAuth();
+  return user ? <ChatContent user={user} /> : null;
+}
+
+function ChatContent({
+  user,
+}: {
+  user: NonNullable<ReturnType<typeof useAuth>["user"]>;
+}) {
   const [open, setOpen] = useState(false);
 
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -131,15 +173,16 @@ export default function OmegaChatBox() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const [mentions, setMentions] = useState<string[]>([]);
+  const mentions = ["ADMIN", "SYSTEMADMIN", "QA"];
 
   const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [forwardSource, setForwardSource] = useState<Message | null>(null);
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
   const [menuDir, setMenuDir] = useState<"up" | "down">("down");
 
   const [messageSearch, setMessageSearch] = useState("");
 
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   // // ✅ unread counts per client (lab sidebar)
   // const [unreadByClient, setUnreadByClient] = useState<Record<string, number>>(
@@ -180,9 +223,6 @@ export default function OmegaChatBox() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
 
-  if (!user) return null;
-  const authUser = user; // ✅ now TypeScript knows this is NOT null
-
   const isLab = LAB_ROLES.includes(user.role as any);
 
   const [undoBar, setUndoBar] = useState<{
@@ -198,6 +238,139 @@ export default function OmegaChatBox() {
       undoTimerRef.current = null;
     }
   }
+
+  const [clientUsers, setClientUsers] = useState<MentionUser[]>([]);
+  const [selectedRecipients, setSelectedRecipients] = useState<MentionUser[]>(
+    [],
+  );
+  const [forwardGroup, setForwardGroup] = useState<
+    "ALL" | "CLIENT" | "LAB" | "ROLES"
+  >("ALL");
+  const [usersError, setUsersError] = useState(false);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersRetry, setUsersRetry] = useState(0);
+  const [caret, setCaret] = useState(0);
+  const [mentionClosed, setMentionClosed] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(0);
+  const [sending, setSending] = useState(false);
+  const activeText = editingId ? editingText : message;
+  const mentionMatch = /(?:^|\s)@([^\s@]*)$/.exec(activeText.slice(0, caret));
+  const mentionQuery = mentionMatch?.[1].toLowerCase();
+  const isForwarding = Boolean(forwardSource);
+  const mentionCandidates: MentionUser[] =
+    isForwarding && forwardGroup === "ROLES"
+      ? LAB_ROLES.map((role) => ({
+          id: `role:${role}`,
+          name: `${role} team`,
+          email: "All users in this role",
+          role,
+        }))
+      : isForwarding && forwardGroup !== "ALL"
+        ? clientUsers.filter((person) =>
+            forwardGroup === "CLIENT"
+              ? person.role === "CLIENT"
+              : person.role !== "CLIENT",
+          )
+        : clientUsers;
+  const suggestions = mentionCandidates.filter(
+    (u) =>
+      !selectedRecipients.some((selected) => selected.id === u.id) &&
+      `${u.name || ""} ${u.email} ${u.role}`
+        .toLowerCase()
+        .includes(mentionQuery || ""),
+  );
+  const showMentions =
+    !editingId && mentionQuery !== undefined && !mentionClosed;
+  const clientScope = isLab ? selectedThread?.clientCode : undefined;
+  const suggestionIndex = Math.min(
+    activeSuggestion,
+    Math.max(0, suggestions.length - 1),
+  );
+
+  useEffect(() => {
+    let live = true;
+    setClientUsers([]);
+    setUsersError(false);
+    setMentionClosed(!isForwarding);
+    setUsersLoading(false);
+    if (!open || (isLab && !clientScope)) return;
+    setUsersLoading(true);
+    const query = new URLSearchParams();
+    if (clientScope) query.set("clientCode", clientScope);
+    if (isForwarding) query.set("forward", "true");
+    api<{ users: MentionUser[] }>(
+      `/messages/mention-users${query.toString() ? `?${query.toString()}` : ""}`,
+      { method: "GET" },
+    )
+      .then((data) => {
+        if (live) setClientUsers(data.users);
+      })
+      .catch(() => {
+        if (live) setUsersError(true);
+      })
+      .finally(() => {
+        if (live) setUsersLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [open, isLab, clientScope, usersRetry, isForwarding]);
+
+  useEffect(() => {
+    setSelectedRecipients([]);
+    setMessage("");
+    setSelectedRecipients([]);
+    setPendingAttachments([]);
+    setReplyTo(null);
+    setEditingId(null);
+    setEditingText("");
+    setForwardSource(null);
+    setAttachOpen(false);
+    setFormSearch("");
+  }, [clientScope]);
+
+  function chooseMention(u: MentionUser) {
+    if (!mentionMatch || editingId) return;
+    const start = caret - mentionMatch[1].length - 1;
+    setSelectedRecipients((prev) =>
+      prev.some((person) => person.id === u.id) ? prev : [...prev, u],
+    );
+    setMessage(activeText.slice(0, start) + activeText.slice(caret));
+    setCaret(start);
+    setMentionClosed(true);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(start, start);
+    });
+  }
+
+  useEffect(() => {
+    let live = true;
+    setFormSearchResults([]);
+    setFormSearchError(null);
+    const q = formSearch.trim();
+    setFormSearchLoading(Boolean(attachOpen && q));
+    if (!attachOpen || !q) return;
+    const timer = window.setTimeout(() => {
+      api<{ items: FormListItem[] }>(
+        `/forms/search?q=${encodeURIComponent(q)}${clientScope ? `&clientCode=${encodeURIComponent(clientScope)}` : ""}`,
+        { method: "GET" },
+      )
+        .then((data) => {
+          if (live) setFormSearchResults(data.items || []);
+        })
+        .catch(() => {
+          if (live) setFormSearchError("Search failed. Please try again.");
+        })
+        .finally(() => {
+          if (live) setFormSearchLoading(false);
+        });
+    }, 300);
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [attachOpen, formSearch, clientScope]);
 
   // -----------------------------------
   // Scroll helpers
@@ -290,6 +463,14 @@ export default function OmegaChatBox() {
 
       return (
         body.includes(q) ||
+        (m.taggedRecipients || []).some((person) =>
+          `${person.name} ${person.email || ""} ${person.role || ""}`
+            .toLowerCase()
+            .includes(q),
+        ) ||
+        (m.labAudienceRoles || []).some((role) =>
+          role.toLowerCase().includes(q),
+        ) ||
         senderRole.includes(q) ||
         senderName.includes(q) ||
         replyBody.includes(q) ||
@@ -327,7 +508,9 @@ export default function OmegaChatBox() {
           if (!sorted.length) return null;
           if (!prev) return sorted[0];
 
-          const stillExists = sorted.find((t) => t.id === prev.id);
+          const stillExists = sorted.find(
+            (t) => t.clientCode === prev.clientCode,
+          );
           return stillExists ?? sorted[0];
         });
       })
@@ -347,7 +530,7 @@ export default function OmegaChatBox() {
       .catch(console.error)
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isLab, selectedThread?.id]);
+  }, [open, isLab, selectedThread?.clientCode]);
 
   // -----------------------------------
   // ✅ Always scroll down when:
@@ -372,7 +555,7 @@ export default function OmegaChatBox() {
 
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, loading, selectedThread?.id, messages]);
+  }, [open, loading, selectedThread?.clientCode, messages]);
 
   // -----------------------------------
   // ✅ When LAB opens a thread, mark it as "seen" locally
@@ -406,7 +589,7 @@ export default function OmegaChatBox() {
       setThreads(sorted);
       setTotalUnread(sorted.reduce((a, t) => a + (t.unreadCount || 0), 0));
     })().catch(console.error);
-  }, [open, isLab, selectedThread?.id]);
+  }, [open, isLab, selectedThread?.clientCode]);
 
   useEffect(() => {
     if (!open) return;
@@ -429,7 +612,7 @@ export default function OmegaChatBox() {
   useEffect(() => {
     setMenuOpenFor(null);
     setReplyTo(null);
-  }, [selectedThread?.id]);
+  }, [selectedThread?.clientCode]);
 
   useEffect(() => {
     return () => clearUndoTimer();
@@ -439,6 +622,28 @@ export default function OmegaChatBox() {
   // Send message
   // -----------------------------------
   const sendMessage = async () => {
+    if (sending || (isLab && !selectedThread)) return;
+    if (!editingId && /(?:^|\s)@[^\s]*$/.test(message)) {
+      toast.error(
+        "Choose a person from the suggestions or remove the unfinished @ tag.",
+      );
+      return;
+    }
+    if (forwardSource && selectedRecipients.length === 0) {
+      toast.error("Select at least one person or lab role to forward to.");
+      return;
+    }
+    setSending(true);
+    try {
+      await submitMessage();
+    } catch {
+      toast.error("Message could not be sent. Please try again.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const submitMessage = async () => {
     const trimmed = (editingId ? editingText : message).trim();
 
     // editing: body required (no attachment edits)
@@ -457,7 +662,11 @@ export default function OmegaChatBox() {
     }
 
     // normal send (allow attachment-only)
-    if ((!trimmed && pendingAttachments.length === 0) || !user) return;
+    if (
+      (!trimmed && pendingAttachments.length === 0 && !forwardSource) ||
+      !user
+    )
+      return;
 
     const outgoingAttachments = pendingAttachments;
 
@@ -465,8 +674,21 @@ export default function OmegaChatBox() {
       method: "POST",
       body: JSON.stringify({
         body: trimmed,
-        attachments: outgoingAttachments,
-        replyToMessageId: replyTo?.id ?? null,
+        ...(forwardSource
+          ? {
+              forwardedFromMessageId: forwardSource.id,
+              mentionedUserIds: selectedRecipients
+                .filter((person) => !person.id.startsWith("role:"))
+                .map((person) => person.id),
+              forwardToRoles: selectedRecipients
+                .filter((person) => person.id.startsWith("role:"))
+                .map((person) => person.role),
+            }
+          : {
+              attachments: outgoingAttachments,
+              mentionedUserIds: selectedRecipients.map((person) => person.id),
+              replyToMessageId: replyTo?.id ?? null,
+            }),
         mentions: user.role === "CLIENT" ? mentions : [],
         ...(isLab && selectedThread
           ? { clientCode: selectedThread.clientCode }
@@ -475,9 +697,11 @@ export default function OmegaChatBox() {
     });
 
     setMessage("");
+    setSelectedRecipients([]);
     setPendingAttachments([]);
     setReplyTo(null);
     setMenuOpenFor(null);
+    setForwardSource(null);
     await refresh();
     scrollToBottom(true);
 
@@ -509,31 +733,76 @@ export default function OmegaChatBox() {
     return items;
   }, [filteredMessages]);
 
-  const CLIENT_TAGS = ["MICRO", "CHEMISTRY", "FRONTDESK"] as const;
+  function messageRecipients(target: Message) {
+    if (target.taggedRecipients?.length) {
+      const names = target.taggedRecipients.map(
+        (person) =>
+          `${person.name}${person.role && person.role !== "CLIENT" ? ` (${person.role})` : ""}`,
+      );
+      if (target.forwardedFromMessageId)
+        names.push(...(target.labAudienceRoles || []));
+      return names.join(", ");
+    }
+    if (target.forwardedFromMessageId)
+      return (target.labAudienceRoles || []).join(", ") || "Lab roles";
+    if (target.isDirect) return "Tagged users";
+    if (target.senderRole === "CLIENT")
+      return (target.labAudienceRoles || []).join(", ") || "Lab team";
+    return "All client users";
+  }
+
+  function replyFromOurSide(target: { senderRole: string }) {
+    return (target.senderRole !== "CLIENT") === isLab;
+  }
+
+  function replySender(target: {
+    id: string;
+    senderRole: string;
+    senderName?: string | null;
+    isOwn?: boolean;
+  }) {
+    const own =
+      target.isOwn ?? messages.find((item) => item.id === target.id)?.isOwn;
+    if (own) return "You";
+    const side = target.senderRole === "CLIENT" ? "Client" : "Lab";
+    const name =
+      target.senderName?.trim() ||
+      (side === "Client" ? "Client" : "OMEGA BIO CHEM");
+    return `${name} · ${replyFromOurSide(target) ? "Your side" : side}`;
+  }
 
   function onSelectReply(target: Message) {
+    setForwardSource(null);
     setReplyTo(target);
     setMenuOpenFor(null);
-
-    // ✅ auto tagging ONLY for CLIENT
-    if (authUser.role === "CLIENT") {
-      const r = target.senderRole;
-      if (CLIENT_TAGS.includes(r as any)) {
-        setMentions([r]); // auto set to sender dept
-      } else {
-        setMentions(["FRONTDESK"]);
-      }
+    if (target.isDirect) {
+      const ids = new Set([
+        target.senderId,
+        ...(target.mentionedUserIds || []),
+      ]);
+      setSelectedRecipients(clientUsers.filter((person) => ids.has(person.id)));
     }
-
     setTimeout(() => inputRef.current?.focus(), 0);
   }
 
-  useEffect(() => {
-    if (authUser.role !== "CLIENT") return;
-
-    setMentions((prev) => (prev.length ? prev : ["MICRO"]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUser.role]);
+  function onSelectForward(target: Message) {
+    setForwardGroup("ALL");
+    setForwardSource(target);
+    setReplyTo(null);
+    setEditingId(null);
+    setEditingText("");
+    setPendingAttachments([]);
+    setSelectedRecipients([]);
+    setMenuOpenFor(null);
+    setMessage("@");
+    setCaret(1);
+    setActiveSuggestion(0);
+    setMentionClosed(false);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(1, 1);
+    });
+  }
 
   // small helper for sidebar preview
   // const preview = (t: Thread) => {
@@ -569,13 +838,15 @@ export default function OmegaChatBox() {
       if (!sorted.length) return null;
       if (!prev) return sorted[0];
 
-      const stillExists = sorted.find((t) => t.id === prev.id);
+      const stillExists = sorted.find((t) => t.clientCode === prev.clientCode);
       return stillExists ?? sorted[0];
     });
   };
 
+  // The launcher is visible when the chat is closed, so unread polling
+  // must stay active in both states. Reading messages still requires open.
   useEffect(() => {
-    if (!user || !open) return;
+    if (!user) return;
 
     fetchTotalUnread().catch(console.error);
 
@@ -590,7 +861,7 @@ export default function OmegaChatBox() {
     setFormsLoading(true);
     try {
       const data = await api<{ items: FormListItem[] }>(
-        `/forms/recent?limit=5`,
+        `/forms/recent?limit=5${clientScope ? `&clientCode=${encodeURIComponent(clientScope)}` : ""}`,
         {
           method: "GET",
         },
@@ -600,29 +871,6 @@ export default function OmegaChatBox() {
       setRecentForms([]);
     } finally {
       setFormsLoading(false);
-    }
-  }
-
-  async function searchForms(q: string) {
-    const trimmed = q.trim();
-    if (!trimmed) {
-      setFormSearchResults([]);
-      setFormSearchError(null);
-      return;
-    }
-    setFormSearchLoading(true);
-    setFormSearchError(null);
-    try {
-      const data = await api<{ items: FormListItem[] }>(
-        `/forms/search?q=${encodeURIComponent(trimmed)}`,
-        { method: "GET" },
-      );
-      setFormSearchResults(Array.isArray(data?.items) ? data.items : []);
-    } catch {
-      setFormSearchResults([]);
-      setFormSearchError("No results or search failed.");
-    } finally {
-      setFormSearchLoading(false);
     }
   }
 
@@ -715,7 +963,7 @@ export default function OmegaChatBox() {
 
   useEffect(() => {
     setMessageSearch("");
-  }, [selectedThread?.id]);
+  }, [selectedThread?.clientCode]);
 
   async function openAttachment(a: any) {
     try {
@@ -795,12 +1043,21 @@ export default function OmegaChatBox() {
         <div className="fixed bottom-6 right-6 z-50 h-[520px] w-[380px] rounded-xl bg-white shadow-2xl flex flex-col border">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b bg-green-600 text-white">
-            <div className="font-semibold">
+            <div
+              className="min-w-0 flex-1 truncate pr-3 font-semibold"
+              title={
+                isLab
+                  ? selectedThread?.clientName?.trim() ||
+                    selectedThread?.clientCode ||
+                    "Messages"
+                  : "OMEGA BIO CHEM"
+              }
+            >
               {isLab
-                ? selectedThread
-                  ? `Client ${selectedThread.clientCode}`
-                  : "Messages"
-                : "Omega BioChem Lab"}
+                ? selectedThread?.clientName?.trim() ||
+                  selectedThread?.clientCode ||
+                  "Messages"
+                : "OMEGA BIO CHEM"}
             </div>
             <button onClick={() => setOpen(false)}>
               <X className="h-5 w-5" />
@@ -808,31 +1065,43 @@ export default function OmegaChatBox() {
           </div>
 
           {/* Body */}
-          <div className="flex flex-1 overflow-hidden">
+          <div className="flex min-h-0 flex-1 overflow-hidden">
             {/* LAB sidebar */}
             {isLab && (
-              <div className="w-36 border-r overflow-y-auto bg-gray-50">
+              <div className="w-[54px] shrink-0 border-r border-gray-200 overflow-y-auto bg-gray-50">
+                {/* <div className="sticky top-0 border-b bg-gray-50 px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                  Clients
+                </div> */}
                 {threads.map((t) => {
                   const unread = t.unreadCount || 0;
                   // const { text, time } = preview(t);
 
                   return (
                     <button
-                      key={t.id}
+                      key={t.clientCode}
+                      disabled={sending}
+                      title={t.clientCode}
+                      aria-current={
+                        selectedThread?.clientCode === t.clientCode
+                          ? "true"
+                          : undefined
+                      }
                       onClick={() => setSelectedThread(t)}
-                      className={`w-full px-3 py-3 text-left text-sm border-b ${
-                        selectedThread?.id === t.id
-                          ? "bg-green-100"
-                          : "hover:bg-gray-100"
+                      className={`w-full border-l-2 px-2 py-2.5 text-left text-xs transition-colors ${
+                        selectedThread?.clientCode === t.clientCode
+                          ? "border-green-600 bg-green-50 text-green-800"
+                          : "border-transparent text-gray-600 hover:bg-gray-100"
                       }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="font-semibold">{t.clientCode}</div>
+                      <div className="flex min-w-0 items-center justify-between gap-1">
+                        <div className="min-w-0 truncate font-semibold">
+                          {t.clientCode}
+                        </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex shrink-0 items-center">
                           {unread > 0 && (
                             <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-green-600 text-white text-[10px] flex items-center justify-center">
-                              {unread}
+                              {unread > 99 ? "99+" : unread}
                             </span>
                           )}
                         </div>
@@ -844,7 +1113,7 @@ export default function OmegaChatBox() {
             )}
 
             {/* Chat window */}
-            <div className="flex-1 flex flex-col">
+            <div className="min-h-0 min-w-0 flex-1 flex flex-col">
               {undoBar && (
                 <div className="mx-3 mt-3 rounded-lg border bg-yellow-50 px-3 py-2 text-sm flex items-center justify-between">
                   <span className="text-gray-800">Message deleted</span>
@@ -875,7 +1144,7 @@ export default function OmegaChatBox() {
               {/* Messages */}
               <div
                 ref={messagesBoxRef}
-                className="flex-1 overflow-y-auto px-3 pb-3 pt-2 space-y-2 text-sm"
+                className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-3 pb-3 pt-2 space-y-2 text-sm"
               >
                 <div className="sticky top-0 z-10 flex justify-center bg-transparent pb-2 pt-1">
                   <div className="relative w-full max-w-[240px]">
@@ -926,20 +1195,34 @@ export default function OmegaChatBox() {
                     }
 
                     const m = it.msg;
-                    const isMine = m.senderRole === user.role;
+                    const isMine = m.isOwn === true;
 
                     return (
                       <div
                         key={m.id}
-                        className={`group rounded-lg px-3 py-2 max-w-[80%] ${
+                        className={`group min-w-0 rounded-lg px-3 py-2 max-w-[80%] [overflow-wrap:anywhere] ${
                           isMine ? "bg-green-200 ml-auto" : "bg-gray-100"
-                        }`}
+                        } ${replyTo?.id === m.id ? "ring-2 ring-green-500 ring-offset-1" : ""}`}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <div className="text-[11px] font-semibold text-gray-600">
-                            {isMine
-                              ? "You"
-                              : `${m.senderRole}${m.senderName ? ` • ${m.senderName}` : ""}`}
+                          <div className="min-w-0 break-words text-[11px] leading-relaxed text-gray-600">
+                            <span
+                              className="font-semibold"
+                              title={m.senderRole}
+                            >
+                              {isMine
+                                ? "You"
+                                : m.senderName?.trim() || m.senderRole}
+                            </span>
+                            <span className="mx-1 text-gray-400">·</span>
+                            <span
+                              title={(m.taggedRecipients || [])
+                                .map((person) => person.email || person.name)
+                                .join(", ")}
+                            >
+                              <span className="font-semibold">To: </span>
+                              {messageRecipients(m)}
+                            </span>
                           </div>
 
                           {/* 3-dots menu */}
@@ -990,12 +1273,21 @@ export default function OmegaChatBox() {
   `}
                                 onClick={(e) => e.stopPropagation()}
                               >
+                                {!m.forwardedFromMessageId && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onSelectReply(m)}
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                                  >
+                                    Reply
+                                  </button>
+                                )}
                                 <button
                                   type="button"
-                                  onClick={() => onSelectReply(m)}
+                                  onClick={() => onSelectForward(m)}
                                   className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
                                 >
-                                  Reply
+                                  Forward
                                 </button>
 
                                 <button
@@ -1052,63 +1344,94 @@ export default function OmegaChatBox() {
                           </div>
                         </div>
                         {m.replyTo && (
-                          <div className="mb-2 rounded-md border-l-4 border-green-500 bg-white/60 px-2 py-1 text-xs">
-                            <div className="font-semibold text-gray-700">
-                              {m.replyTo.senderRole}
-                              {m.replyTo.senderName
-                                ? ` • ${m.replyTo.senderName}`
-                                : ""}
+                          <div
+                            className={`mb-2 rounded-md border-l-4 px-2 py-1 text-xs ${replyFromOurSide(m.replyTo) ? "border-green-500 bg-green-50" : "border-blue-500 bg-blue-50"}`}
+                          >
+                            <div
+                              className={`truncate font-semibold ${replyFromOurSide(m.replyTo) ? "text-green-800" : "text-blue-800"}`}
+                            >
+                              {replySender(m.replyTo)}
                             </div>
                             <div className="text-gray-600 line-clamp-2">
-                              {m.replyTo.body}
+                              {wrapLongWords(m.replyTo.body || "Attachment")}
                             </div>
                           </div>
                         )}
-                        {Array.isArray((m as any).attachments) &&
-                          (m as any).attachments.length > 0 && (
-                            <div className="mt-2 space-y-1">
-                              {(m as any).attachments.map(
-                                (a: any, i: number) => (
-                                  <div
-                                    key={i}
-                                    className="text-xs text-gray-700"
-                                  >
-                                    {a.kind !== "FORM" &&
-                                    a.contentType?.startsWith("image/") ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => openAttachment(a)}
-                                        className="underline text-left"
-                                      >
-                                        🖼️ {a.filename}
-                                      </button>
-                                    ) : a.kind !== "FORM" ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => openAttachment(a)}
-                                        className="underline text-left"
-                                      >
-                                        📎 {a.filename}
-                                      </button>
-                                    ) : (
-                                      <span className="underline">
-                                        📄 Form: {a.formNumber}
-                                      </span>
-                                    )}
-                                  </div>
-                                ),
-                              )}
+                        {m.forwardedFromMessageId &&
+                          (m.forwardNote ||
+                            (m.forwardedText == null ? m.body : "")) && (
+                            <div
+                              className="mb-2 min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]"
+                              style={{ hyphens: "manual" }}
+                            >
+                              {wrapLongWords(m.forwardNote || m.body)}
                             </div>
                           )}
+                        <div
+                          className={
+                            m.forwardedFromMessageId
+                              ? "mt-1 min-w-0 max-w-full rounded-lg border border-amber-200 bg-amber-50 px-2 py-2"
+                              : "min-w-0 max-w-full"
+                          }
+                        >
+                          {m.forwardedFromMessageId && (
+                            <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-amber-800">
+                              <span aria-hidden="true">↪</span>Forwarded
+                            </div>
+                          )}
+                          {Array.isArray((m as any).attachments) &&
+                            (m as any).attachments.length > 0 && (
+                              <div className="mt-2 space-y-1">
+                                {(m as any).attachments.map(
+                                  (a: any, i: number) => (
+                                    <div
+                                      key={i}
+                                      className="text-xs text-gray-700"
+                                    >
+                                      {a.kind !== "FORM" &&
+                                      a.contentType?.startsWith("image/") ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => openAttachment(a)}
+                                          className="max-w-full break-all underline text-left"
+                                        >
+                                          🖼️ {a.filename}
+                                        </button>
+                                      ) : a.kind !== "FORM" ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => openAttachment(a)}
+                                          className="max-w-full break-all underline text-left"
+                                        >
+                                          📎 {a.filename}
+                                        </button>
+                                      ) : (
+                                        <span className="underline">
+                                          📄 Form: {a.formNumber}
+                                        </span>
+                                      )}
+                                    </div>
+                                  ),
+                                )}
+                              </div>
+                            )}
 
-                        <div className="mt-1 flex items-end justify-between gap-2">
-                          <div className="whitespace-pre-wrap break-words">
-                            {m.body}
+                          <div className="mt-1 flex items-end justify-between gap-2">
+                            <div
+                              className="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere]"
+                              style={{ hyphens: "manual" }}
+                            >
+                              {wrapLongWords(
+                                m.forwardedFromMessageId
+                                  ? (m.forwardedText ?? "")
+                                  : m.body,
+                              )}
+                            </div>
+
+                            <span className="shrink-0 text-[10px] text-gray-500 whitespace-nowrap">
+                              {formatTimeLocal(m.createdAt)}
+                            </span>
                           </div>
-
-                          <span className="text-[10px] text-gray-500 whitespace-nowrap">
-                            {formatTimeLocal(m.createdAt)}
-                          </span>
                         </div>
                       </div>
                     );
@@ -1117,176 +1440,344 @@ export default function OmegaChatBox() {
                 {/* ✅ scroll anchor */}
                 <div ref={chatEndRef} />
               </div>
-
-              {/* Input */}
-              <div className="border-t p-2">
-                {editingId && (
-                  <div className="mb-2 rounded-lg border bg-yellow-50 px-3 py-2 text-xs">
-                    <div className="flex items-center justify-between">
-                      <div className="font-semibold text-gray-700">
-                        Editing message
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingId(null);
-                          setEditingText("");
-                        }}
-                        className="text-gray-500 hover:text-gray-800"
-                      >
-                        ×
-                      </button>
-                    </div>
+            </div>
+          </div>
+          {/* Input */}
+          <div className="shrink-0 border-t p-2">
+            {editingId && (
+              <div className="mb-2 rounded-lg border bg-yellow-50 px-3 py-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold text-gray-700">
+                    Editing message
                   </div>
-                )}
-                {replyTo && (
-                  <div className="mb-2 rounded-lg border bg-gray-50 px-3 py-2 text-xs">
-                    <div className="flex items-center justify-between">
-                      <div className="font-semibold text-gray-700">
-                        Replying to {replyTo.senderRole}
-                        {replyTo.senderName ? ` • ${replyTo.senderName}` : ""}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setReplyTo(null)}
-                        className="text-gray-500 hover:text-gray-800"
-                        title="Cancel reply"
-                      >
-                        ×
-                      </button>
-                    </div>
-                    <div className="mt-1 text-gray-600 line-clamp-2">
-                      {replyTo.body}
-                    </div>
-                  </div>
-                )}
-                {/* Client: recipient selector row */}
-                {user.role === "CLIENT" && (
-                  <div className="mb-2 rounded-lg bg-gray-50 border px-2 py-2">
-                    <div className="flex items-center justify-between">
-                      <div className="text-[11px] text-gray-600">
-                        <span className="font-semibold">To:</span>{" "}
-                        {mentions.length ? mentions.join(", ") : "FRONTDESK"}
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setMentions(["FRONTDESK"])}
-                        className="text-[11px] text-gray-600 hover:text-gray-900"
-                        title="Reset to Frontdesk"
-                      >
-                        Reset
-                      </button>
-                    </div>
-
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {CLIENT_TAGS.map((r) => {
-                        const active = mentions.includes(r);
-                        return (
-                          <button
-                            key={r}
-                            type="button"
-                            onClick={() =>
-                              setMentions((prev) => {
-                                if (prev.includes(r)) {
-                                  const next = prev.filter((x) => x !== r);
-                                  return next.length ? next : ["FRONTDESK"];
-                                }
-                                return [...prev, r];
-                              })
-                            }
-                            className={`text-xs rounded-full px-3 py-1 border transition ${
-                              active
-                                ? "bg-green-600 text-white border-green-600"
-                                : "bg-white text-gray-700 hover:bg-gray-100"
-                            }`}
-                          >
-                            @{r}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {pendingAttachments.length > 0 && (
-                  <div className="mb-2 flex flex-wrap gap-2">
-                    {pendingAttachments.map((a, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center gap-2 rounded-full border bg-gray-50 px-3 py-1 text-xs"
-                      >
-                        <span className="max-w-[220px] truncate">
-                          {a.kind === "FORM"
-                            ? `Form: ${a.formNumber}`
-                            : a.filename}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removePendingAttachment(idx)}
-                          className="text-gray-500 hover:text-gray-800"
-                          title="Remove"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Actual input row */}
-                <div className="flex items-center gap-2">
                   <button
-                    disabled={!!editingId}
-                    title={
-                      editingId
-                        ? "Finish editing to attach"
-                        : "Attach photo/file or form"
-                    }
-                    onClick={() => !editingId && setAttachOpen(true)}
-                    className={`h-10 w-10 flex items-center justify-center rounded-full ${
-                      editingId
-                        ? "opacity-40 cursor-not-allowed"
-                        : "hover:bg-gray-100"
-                    }`}
-                  >
-                    <Paperclip className="h-5 w-5 text-gray-600" />
-                  </button>
-
-                  <textarea
-                    ref={inputRef as any}
-                    rows={1}
-                    value={editingId ? editingText : message}
-                    onChange={(e) => {
-                      if (editingId) {
-                        setEditingText(e.target.value);
-                      } else {
-                        setMessage(e.target.value);
-                      }
-
-                      // ✅ auto grow
-                      e.currentTarget.style.height = "auto";
-                      e.currentTarget.style.height =
-                        e.currentTarget.scrollHeight + "px";
+                    type="button"
+                    onClick={() => {
+                      setEditingId(null);
+                      setEditingText("");
                     }}
-                    placeholder="Type a message…"
-                    className="flex-1 min-h-[40px] max-h-[120px] resize-none overflow-y-auto rounded-2xl border px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault(); // prevent newline
-                        sendMessage();
-                      }
-                    }}
-                  />
-
-                  <button
-                    onClick={sendMessage}
-                    className="h-10 px-4 rounded-full bg-green-600 text-white text-sm hover:bg-green-700"
+                    className="text-gray-500 hover:text-gray-800"
                   >
-                    Send
+                    ×
                   </button>
                 </div>
               </div>
+            )}
+            {forwardSource && (
+              <div className="mb-2 rounded-lg border border-l-4 border-amber-200 border-l-amber-500 bg-amber-50 px-3 py-2 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-amber-800">
+                    Forward message
+                  </span>
+                  <button
+                    type="button"
+                    disabled={sending}
+                    aria-label="Cancel forward"
+                    onClick={() => {
+                      setForwardSource(null);
+                      setSelectedRecipients([]);
+                      setMessage("");
+                      setMentionClosed(true);
+                    }}
+                    className="text-gray-500 hover:text-gray-800"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="mt-1 line-clamp-2 text-gray-600">
+                  {wrapLongWords(forwardSource.body || "Attachment")}
+                </div>
+              </div>
+            )}
+            {replyTo && (
+              <div
+                className={`mb-2 rounded-lg border border-l-4 px-3 py-2 text-xs ${replyFromOurSide(replyTo) ? "border-green-200 border-l-green-500 bg-green-50" : "border-blue-200 border-l-blue-500 bg-blue-50"}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div
+                    className={`min-w-0 truncate font-semibold ${replyFromOurSide(replyTo) ? "text-green-800" : "text-blue-800"}`}
+                    title={replySender(replyTo)}
+                  >
+                    {replyTo.isOwn
+                      ? "Replying to your message"
+                      : `Replying to ${replySender(replyTo)}`}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReplyTo(null)}
+                    className="text-gray-500 hover:text-gray-800"
+                    title="Cancel reply"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="mt-1 text-gray-600 line-clamp-2">
+                  {wrapLongWords(replyTo.body || "Attachment")}
+                </div>
+              </div>
+            )}
+            <div className="mb-2 flex max-h-20 flex-wrap items-center gap-1 overflow-y-auto text-[11px] text-gray-600">
+              <span className="font-semibold">To:</span>
+              {selectedRecipients.length ? (
+                selectedRecipients.map((person) => (
+                  <span
+                    key={person.id}
+                    className="inline-flex items-center gap-1 rounded-full border bg-green-50 px-2 py-0.5 text-green-800"
+                  >
+                    {person.name || person.email}
+                    <button
+                      type="button"
+                      disabled={sending}
+                      aria-label={`Remove ${person.name || person.email}`}
+                      onClick={() =>
+                        setSelectedRecipients((prev) =>
+                          prev.filter((u) => u.id !== person.id),
+                        )
+                      }
+                      className="text-gray-500 hover:text-gray-800"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))
+              ) : (
+                <span>
+                  {forwardSource
+                    ? "Choose people or lab roles with @"
+                    : isLab
+                      ? `All ${clientScope || "client"} users`
+                      : "ADMIN, SYSTEMADMIN, QA"}
+                </span>
+              )}
+            </div>
+
+            {pendingAttachments.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-2">
+                {pendingAttachments.map((a, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-2 rounded-full border bg-gray-50 px-3 py-1 text-xs"
+                  >
+                    <span className="max-w-[220px] truncate">
+                      {a.kind === "FORM" ? `Form: ${a.formNumber}` : a.filename}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removePendingAttachment(idx)}
+                      className="text-gray-500 hover:text-gray-800"
+                      title="Remove"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="relative">
+              {showMentions && (
+                <div
+                  className="absolute bottom-full left-0 right-0 z-30 mb-2 overflow-hidden rounded-lg border bg-white shadow-lg"
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  <div className="border-b bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-700">
+                    {forwardSource
+                      ? "Forward message"
+                      : isLab
+                        ? `Users of ${clientScope || "selected client"}`
+                        : "Lab users"}
+                  </div>
+                  {isForwarding && (
+                    <div
+                      className="flex gap-1 border-b bg-white px-2 py-1.5"
+                      role="group"
+                      aria-label="Forward recipients"
+                    >
+                      {(
+                        [
+                          ["ALL", "All"],
+                          ["CLIENT", isLab ? "Client users" : "My colleagues"],
+                          ["LAB", "Lab users"],
+                          ["ROLES", "Lab roles"],
+                        ] as const
+                      ).map(([group, label]) => (
+                        <button
+                          type="button"
+                          key={group}
+                          aria-pressed={forwardGroup === group}
+                          onClick={() => {
+                            setForwardGroup(group);
+                            setActiveSuggestion(0);
+                          }}
+                          className={`rounded px-2 py-1 text-[10px] ${forwardGroup === group ? "bg-green-100 font-semibold text-green-800" : "text-gray-500 hover:bg-gray-100"}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div
+                    role="listbox"
+                    id="chat-mention-list"
+                    aria-label="Message recipients"
+                    className="max-h-40 overflow-y-auto"
+                  >
+                    {(!isForwarding || forwardGroup !== "ROLES") &&
+                    usersLoading ? (
+                      <div
+                        role="status"
+                        className="px-3 py-3 text-xs text-gray-500"
+                      >
+                        Loading…
+                      </div>
+                    ) : (!isForwarding || forwardGroup !== "ROLES") &&
+                      usersError ? (
+                      <div className="px-3 py-3 text-xs text-gray-500">
+                        Unable to load users.{" "}
+                        <button
+                          type="button"
+                          onClick={() => setUsersRetry((v) => v + 1)}
+                          className="text-green-700 underline"
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    ) : suggestions.length === 0 ? (
+                      <div className="px-3 py-3 text-xs text-gray-500">
+                        No matching users.
+                      </div>
+                    ) : (
+                      suggestions.map((person, index) => (
+                        <button
+                          type="button"
+                          role="option"
+                          id={`chat-person-${person.id}`}
+                          aria-selected={index === suggestionIndex}
+                          key={person.id}
+                          onClick={() => chooseMention(person)}
+                          onMouseEnter={() => setActiveSuggestion(index)}
+                          className={`block w-full px-3 py-2 text-left text-xs ${index === suggestionIndex ? "bg-green-100" : "hover:bg-gray-50"}`}
+                        >
+                          <span className="block truncate font-semibold text-gray-700">
+                            {person.name || person.email}
+                            {isForwarding && forwardGroup !== "ROLES"
+                              ? ` · ${person.role === "CLIENT" ? "Client" : person.role}`
+                              : !isForwarding && person.role !== "CLIENT"
+                                ? ` · ${person.role}`
+                                : ""}
+                          </span>
+                          <span className="block truncate text-[10px] text-gray-500">
+                            {person.email}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!!editingId || sending || Boolean(forwardSource)}
+                  title="Attach photo/file or form"
+                  aria-label="Add attachment"
+                  onClick={() => setAttachOpen(true)}
+                  className="h-10 w-10 shrink-0 flex items-center justify-center rounded-full hover:bg-gray-100 disabled:opacity-40"
+                >
+                  <Paperclip className="h-5 w-5 text-gray-600" />
+                </button>
+                <textarea
+                  ref={inputRef}
+                  disabled={sending}
+                  onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
+                  onBlur={() => setMentionClosed(true)}
+                  rows={1}
+                  value={editingId ? editingText : message}
+                  aria-label="Message"
+                  aria-autocomplete="list"
+                  aria-controls={showMentions ? "chat-mention-list" : undefined}
+                  aria-activedescendant={
+                    showMentions && suggestions[suggestionIndex]
+                      ? `chat-person-${suggestions[suggestionIndex].id}`
+                      : undefined
+                  }
+                  onChange={(e) => {
+                    if (editingId) setEditingText(e.target.value);
+                    else setMessage(e.target.value);
+                    setCaret(e.currentTarget.selectionStart);
+                    setMentionClosed(false);
+                    setActiveSuggestion(0);
+                    e.currentTarget.style.height = "auto";
+                    e.currentTarget.style.height =
+                      Math.min(e.currentTarget.scrollHeight, 120) + "px";
+                  }}
+                  placeholder={
+                    forwardSource
+                      ? "Optional note… @ to choose recipients"
+                      : "Type a message…"
+                  }
+                  className="min-w-0 flex-1 min-h-[40px] max-h-[120px] resize-none overflow-y-auto rounded-2xl border px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200 disabled:opacity-60"
+                  onKeyDown={(e) => {
+                    if (e.nativeEvent.isComposing) return;
+                    if (showMentions && e.key === "Escape") {
+                      e.preventDefault();
+                      setMentionClosed(true);
+                      return;
+                    }
+                    if (
+                      showMentions &&
+                      (e.key === "ArrowDown" || e.key === "ArrowUp")
+                    ) {
+                      e.preventDefault();
+                      const next =
+                        (suggestionIndex +
+                          (e.key === "ArrowDown" ? 1 : -1) +
+                          suggestions.length) %
+                        Math.max(1, suggestions.length);
+                      setActiveSuggestion(next);
+                      document
+                        .getElementById(`chat-person-${suggestions[next]?.id}`)
+                        ?.scrollIntoView({ block: "nearest" });
+                      return;
+                    }
+                    if (showMentions && e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      if (suggestions[suggestionIndex])
+                        chooseMention(suggestions[suggestionIndex]);
+                      return;
+                    }
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void sendMessage();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={
+                    sending ||
+                    (!activeText.trim() &&
+                      pendingAttachments.length === 0 &&
+                      !forwardSource) ||
+                    (Boolean(forwardSource) &&
+                      selectedRecipients.length === 0) ||
+                    (isLab && !selectedThread)
+                  }
+                  onClick={() => void sendMessage()}
+                  className="h-10 shrink-0 px-4 rounded-full bg-green-600 text-white text-sm hover:bg-green-700 disabled:opacity-40"
+                >
+                  {sending
+                    ? "…"
+                    : editingId
+                      ? "Save"
+                      : forwardSource
+                        ? "Forward"
+                        : "Send"}
+                </button>
+              </div>
+            </div>
+            <div className="mt-1 text-[10px] text-gray-500">
+              Type @ to select a user
             </div>
           </div>
         </div>
@@ -1350,14 +1841,9 @@ export default function OmegaChatBox() {
                     placeholder="Search by Form # (example: CLIENT-20260001)"
                     className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-green-200"
                   />
-                  <button
-                    type="button"
-                    onClick={() => searchForms(formSearch)}
-                    className="rounded-xl border px-3 py-2 text-sm hover:bg-gray-50"
-                    disabled={formSearchLoading}
-                  >
-                    {formSearchLoading ? "Searching…" : "Search"}
-                  </button>
+                  <span className="text-xs text-gray-500" role="status">
+                    {formSearchLoading ? "Searching…" : ""}
+                  </span>
                 </div>
 
                 {formSearchError && (

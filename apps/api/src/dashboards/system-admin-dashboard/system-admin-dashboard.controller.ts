@@ -19,4 +19,4 @@ export class SystemAdminDashboardController {
   rebuild(@Req() req: any) {
     return this.svc.rebuildDashboardReports(req.user);
   }
-}
+} 

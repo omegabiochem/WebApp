@@ -651,12 +651,18 @@ model Message {
   senderName  String?
   body        String
   mentions    UserRole[] @default([])
+  mentionedUserIds String[] @default([])
+  isDirect Boolean @default(false)
   attachments Json?
   createdAt   DateTime   @default(now())
   readAt      DateTime?
 
   deletedAt DateTime?
   deletedBy String?
+  forwardedFromMessageId String?
+
+  forwardNote   String?
+  forwardedText String?
 
   replyToMessageId String?
   replyTo          Message?  @relation("MessageReply", fields: [replyToMessageId], references: [id], onDelete: SetNull)

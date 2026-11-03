@@ -17,6 +17,7 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/jwt-auth.guard';
 import { MessagesService } from './messages.service';
+import { messageVisibility } from './message-visibility';
 import { CreateMessageDto } from './create-message.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { StorageService } from 'src/storage/storage.service';
@@ -36,6 +37,15 @@ export class MessagesController {
     private readonly prisma: PrismaService,
   ) {
     console.log('✅ MessagesController loaded');
+  }
+
+  @Get('mention-users')
+  mentionUsers(
+    @Req() req: any,
+    @Query('clientCode') clientCode?: string,
+    @Query('forward') forward?: string,
+  ) {
+    return this.service.mentionUsers(req.user, clientCode, forward === 'true');
   }
 
   // CLIENT & LAB → fetch conversation
@@ -60,6 +70,7 @@ export class MessagesController {
       reportId,
       chemistryId,
       viewerRole: user.role,
+      viewerUserId: user.userId ?? user.sub,
     });
   }
 
@@ -188,10 +199,20 @@ export class MessagesController {
     });
     if (!row) throw new BadRequestException('File not found');
 
-    if (role === 'CLIENT') {
-      if (!clientCode || row.clientCode !== clientCode) {
-        throw new ForbiddenException('Not allowed');
-      }
+    const actor = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!actor?.active) throw new ForbiddenException('Account unavailable');
+    if (row.uploadedBy !== userId) {
+      const visible = await this.prisma.message.findFirst({
+        where: {
+          AND: [messageVisibility(actor.role, userId)],
+          ...(actor.role === 'CLIENT'
+            ? { thread: { clientCode: actor.clientCode || '__missing__' } }
+            : {}),
+          attachments: { array_contains: [{ storageKey: row.storageKey }] },
+        },
+        select: { id: true },
+      });
+      if (!visible) throw new ForbiddenException('Not allowed');
     }
 
     res.setHeader(
