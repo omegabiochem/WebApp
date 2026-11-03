@@ -6807,8 +6807,43 @@ export class BillingService {
       extraChargeSuggestionMap.values(),
     ).slice(0, 75);
 
+    // Scope address suggestions to invoices belonging to this client only.
+    const clientInvoices = await this.prisma.billingInvoice.findMany({
+      where: { clientCode: invoice.clientCode },
+      select: {
+        billingEmail: true,
+        emails: {
+          where: { sentAt: { not: null } },
+          orderBy: { createdAt: 'desc' },
+          select: { toEmail: true, ccEmails: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    const usedEmailMap = new Map<string, string>();
+    const addUsedEmail = (value: unknown) => {
+      if (Array.isArray(value)) { value.forEach(addUsedEmail); return; }
+      if (typeof value !== 'string') return;
+      for (const part of value.split(/[;,\n]+/)) {
+        const email = part.trim();
+        if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          const key = email.toLowerCase();
+          if (!usedEmailMap.has(key)) usedEmailMap.set(key, email);
+        }
+      }
+    };
+    addUsedEmail(invoice.billingEmail);
+    for (const previous of clientInvoices) {
+      addUsedEmail(previous.billingEmail);
+      for (const email of previous.emails) {
+        addUsedEmail(email.toEmail);
+        addUsedEmail(email.ccEmails);
+      }
+    }
+
     return {
       ...invoice,
+      usedEmailSuggestions: Array.from(usedEmailMap.values()),
 
       subtotal: invoice.subtotal.toFixed(2),
 
