@@ -28,6 +28,24 @@ type ApeReportDaySection = {
   key: string;
   dayLabel: string;
   rows: ApeReportRow[];
+  calculationSettings?: ApeCalculationSettings;
+};
+
+type ApeCalculationSettings = {
+  percentDecreaseFormula: string;
+  controlGrowthMultiplier: number;
+  day0SampleGrowthMultiplier: number;
+  laterDaySampleGrowthMultiplier: number;
+  day0DecimalPlaces: number;
+  laterDayDecimalPlaces: number;
+  laterDayPercentCap: number;
+  standardInoculumMin: number;
+  standardInoculumMax: number;
+  nigerInoculumMin: number;
+  nigerInoculumMax: number;
+  oneLogThreshold: number;
+  twoLogThreshold: number;
+  threeLogThreshold: number;
 };
 
 type ApeReportViewProps = {
@@ -64,10 +82,6 @@ const APE_ORGANISM_OPTIONS = [
 const DEFAULT_APE_ORGANISMS = APE_ORGANISM_OPTIONS.filter(
   (item) => item.key !== "B_CEPACIA",
 ).map((item) => item.reportLabel);
-
-const CONTROL_GROWTH_MULTIPLIER = 10_000;
-const DAY_0_SAMPLE_GROWTH_MULTIPLIER = 10_000;
-const LATER_DAY_SAMPLE_GROWTH_MULTIPLIER = 100;
 
 function normalizeOrganismToken(value: unknown) {
   return String(value ?? "")
@@ -160,6 +174,132 @@ function makeDefaultApeReportSections(
   ];
 }
 
+const DEFAULT_APE_CALCULATION_SETTINGS: ApeCalculationSettings = {
+  percentDecreaseFormula: "((CG - SG) / CG) * 100",
+  controlGrowthMultiplier: 10_000,
+  day0SampleGrowthMultiplier: 10_000,
+  laterDaySampleGrowthMultiplier: 100,
+  day0DecimalPlaces: 2,
+  laterDayDecimalPlaces: 1,
+  laterDayPercentCap: 99.9,
+  standardInoculumMin: 1.5,
+  standardInoculumMax: 2.5,
+  nigerInoculumMin: 2,
+  nigerInoculumMax: 3,
+  oneLogThreshold: 90,
+  twoLogThreshold: 99,
+  threeLogThreshold: 99.9,
+};
+
+function normalizeSettingNumber(
+  value: unknown,
+  fallback: number,
+  minimum?: number,
+  maximum?: number,
+) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  if (minimum !== undefined && parsed < minimum) return minimum;
+  if (maximum !== undefined && parsed > maximum) return maximum;
+  return parsed;
+}
+
+function normalizeApeCalculationSettings(value: any): ApeCalculationSettings {
+  return {
+    percentDecreaseFormula:
+      typeof value?.percentDecreaseFormula === "string" &&
+      value.percentDecreaseFormula.trim()
+        ? value.percentDecreaseFormula.trim()
+        : DEFAULT_APE_CALCULATION_SETTINGS.percentDecreaseFormula,
+    controlGrowthMultiplier: normalizeSettingNumber(
+      value?.controlGrowthMultiplier,
+      DEFAULT_APE_CALCULATION_SETTINGS.controlGrowthMultiplier,
+      0.000001,
+    ),
+    day0SampleGrowthMultiplier: normalizeSettingNumber(
+      value?.day0SampleGrowthMultiplier,
+      DEFAULT_APE_CALCULATION_SETTINGS.day0SampleGrowthMultiplier,
+      0.000001,
+    ),
+    laterDaySampleGrowthMultiplier: normalizeSettingNumber(
+      value?.laterDaySampleGrowthMultiplier,
+      DEFAULT_APE_CALCULATION_SETTINGS.laterDaySampleGrowthMultiplier,
+      0.000001,
+    ),
+    day0DecimalPlaces: Math.round(
+      normalizeSettingNumber(
+        value?.day0DecimalPlaces,
+        DEFAULT_APE_CALCULATION_SETTINGS.day0DecimalPlaces,
+        0,
+        6,
+      ),
+    ),
+    laterDayDecimalPlaces: Math.round(
+      normalizeSettingNumber(
+        value?.laterDayDecimalPlaces,
+        DEFAULT_APE_CALCULATION_SETTINGS.laterDayDecimalPlaces,
+        0,
+        6,
+      ),
+    ),
+    laterDayPercentCap: normalizeSettingNumber(
+      value?.laterDayPercentCap,
+      DEFAULT_APE_CALCULATION_SETTINGS.laterDayPercentCap,
+      0,
+      100,
+    ),
+    standardInoculumMin: normalizeSettingNumber(
+      value?.standardInoculumMin,
+      DEFAULT_APE_CALCULATION_SETTINGS.standardInoculumMin,
+    ),
+    standardInoculumMax: normalizeSettingNumber(
+      value?.standardInoculumMax,
+      DEFAULT_APE_CALCULATION_SETTINGS.standardInoculumMax,
+    ),
+    nigerInoculumMin: normalizeSettingNumber(
+      value?.nigerInoculumMin,
+      DEFAULT_APE_CALCULATION_SETTINGS.nigerInoculumMin,
+    ),
+    nigerInoculumMax: normalizeSettingNumber(
+      value?.nigerInoculumMax,
+      DEFAULT_APE_CALCULATION_SETTINGS.nigerInoculumMax,
+    ),
+    oneLogThreshold: normalizeSettingNumber(
+      value?.oneLogThreshold,
+      DEFAULT_APE_CALCULATION_SETTINGS.oneLogThreshold,
+    ),
+    twoLogThreshold: normalizeSettingNumber(
+      value?.twoLogThreshold,
+      DEFAULT_APE_CALCULATION_SETTINGS.twoLogThreshold,
+    ),
+    threeLogThreshold: normalizeSettingNumber(
+      value?.threeLogThreshold,
+      DEFAULT_APE_CALCULATION_SETTINGS.threeLogThreshold,
+    ),
+  };
+}
+
+function evaluatePercentDecreaseFormula(
+  formula: string,
+  controlGrowth: number,
+  sampleGrowth: number,
+): number | null {
+  const substituted = formula
+    .replace(/\bCG\b/gi, `(${controlGrowth})`)
+    .replace(/\bSG\b/gi, `(${sampleGrowth})`);
+
+  if (!/^[0-9+\-*/().\s]+$/.test(substituted)) return null;
+
+  try {
+    const result = Function(`"use strict"; return (${substituted});`)();
+    return typeof result === "number" && Number.isFinite(result)
+      ? result
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function parseGrowthInput(value: unknown): number | null {
   const normalized = String(value ?? "")
     .replaceAll(",", "")
@@ -172,6 +312,7 @@ function parseGrowthInput(value: unknown): number | null {
     return directNumber;
   }
 
+  // Supports previously displayed values such as "171 × 10⁴" or "2% - OK".
   const firstNumber = normalized.match(/\d+(?:\.\d+)?/);
   if (!firstNumber) return null;
 
@@ -196,10 +337,11 @@ function calculatePercentDecrease(
   controlGrowthRaw: unknown,
   sampleGrowthRaw: unknown,
   sampleGrowthMultiplier: number,
+  settings: ApeCalculationSettings,
 ): number | null {
   const controlGrowth = calculateActualGrowth(
     controlGrowthRaw,
-    CONTROL_GROWTH_MULTIPLIER,
+    settings.controlGrowthMultiplier,
   );
   const sampleGrowth = calculateActualGrowth(
     sampleGrowthRaw,
@@ -210,49 +352,78 @@ function calculatePercentDecrease(
     return null;
   }
 
-  return ((controlGrowth - sampleGrowth) / controlGrowth) * 100;
+  return evaluatePercentDecreaseFormula(
+    settings.percentDecreaseFormula,
+    controlGrowth,
+    sampleGrowth,
+  );
 }
 
-function formatPercentDecrease(value: number | null, decimalPlaces: 1 | 2) {
+function formatPercentDecrease(value: number | null, decimalPlaces: number) {
   if (value === null || !Number.isFinite(value)) return "";
+
   return `${value.toFixed(decimalPlaces)}%`;
 }
 
-function getLogReductionFromDecrease(percentDecrease: number | null) {
+function getLogReductionFromDecrease(
+  percentDecrease: number | null,
+  settings: ApeCalculationSettings,
+) {
   if (percentDecrease === null || !Number.isFinite(percentDecrease)) return "";
 
   const value = percentDecrease + Number.EPSILON;
 
-  if (value >= 99.9) return "3 Log Reduction";
-  if (value >= 99) return "2 Log Reduction";
-  if (value >= 90) return "1 Log Reduction";
+  if (value >= settings.threeLogThreshold) return "3 Log Reduction";
+  if (value >= settings.twoLogThreshold) return "2 Log Reduction";
+  if (value >= settings.oneLogThreshold) return "1 Log Reduction";
 
   return "0 Log Reduction";
 }
 
-function getInoculumResultFromDecrease(
-  organism: string,
-  percentDecrease: number | null,
+function getInoculumResultFromControlGrowth(
+  controlGrowthRaw: unknown,
+  settings: ApeCalculationSettings,
 ) {
-  if (percentDecrease === null || !Number.isFinite(percentDecrease)) return "";
+  const actualControlGrowth = calculateActualGrowth(
+    controlGrowthRaw,
+    settings.controlGrowthMultiplier,
+  );
 
-  const isNiger = organism.trim().toLowerCase().includes("niger");
-  const isWithinRange = isNiger
-    ? percentDecrease >= 2 && percentDecrease <= 3
-    : percentDecrease >= 1.5 && percentDecrease <= 2.5;
+  if (
+    actualControlGrowth === null ||
+    !Number.isFinite(actualControlGrowth) ||
+    actualControlGrowth <= 0
+  ) {
+    return "";
+  }
 
-  return isWithinRange ? "OK" : "NOT OK";
+  // Count total digits in the actual Control Growth value.
+  // Examples:
+  // 1 × 10⁴   = 10,000    = 5 digits  → NOT OK
+  // 10 × 10⁴  = 100,000   = 6 digits  → OK
+  // 174 × 10⁴ = 1,740,000 = 7 digits  → OK
+
+  const totalDigits = Math.floor(Math.log10(Math.abs(actualControlGrowth))) + 1;
+
+  return totalDigits >= 6 && totalDigits <= 9 ? "OK" : "NOT OK";
 }
 
-function formatGrowthNotation(rawValue: unknown, exponent: 2 | 4) {
+function formatGrowthNotation(rawValue: unknown, multiplier: number) {
   const value = parseGrowthInput(rawValue);
   if (value === null) return "";
 
-  return `${value} × 10${exponent === 4 ? "⁴" : "²"}`;
+  if (multiplier === 10_000) return `${value} × 10⁴`;
+  if (multiplier === 1_000) return `${value} × 10³`;
+  if (multiplier === 100) return `${value} × 10²`;
+  if (multiplier === 10) return `${value} × 10¹`;
+  if (multiplier === 1) return String(value);
+
+  return `${value} × ${multiplier}`;
 }
 
 function recalculateApeReportSections(
   sections: ApeReportDaySection[],
+  settings: ApeCalculationSettings,
 ): ApeReportDaySection[] {
   const day0Section = sections.find((section) => section.key === "DAY_0");
   const day0ControlByOrganism = new Map(
@@ -261,6 +432,7 @@ function recalculateApeReportSections(
 
   return sections.map((section) => ({
     ...section,
+    calculationSettings: section.key === "DAY_0" ? settings : undefined,
     rows: section.rows.map((row) => {
       const controlGrowth =
         section.key === "DAY_0"
@@ -269,13 +441,14 @@ function recalculateApeReportSections(
 
       const sampleGrowthMultiplier =
         section.key === "DAY_0"
-          ? DAY_0_SAMPLE_GROWTH_MULTIPLIER
-          : LATER_DAY_SAMPLE_GROWTH_MULTIPLIER;
+          ? settings.day0SampleGrowthMultiplier
+          : settings.laterDaySampleGrowthMultiplier;
 
       const percentDecrease = calculatePercentDecrease(
         controlGrowth,
         row.sampleGrowth,
         sampleGrowthMultiplier,
+        settings,
       );
 
       return {
@@ -286,13 +459,15 @@ function recalculateApeReportSections(
             ? percentDecrease
             : percentDecrease === null
               ? null
-              : Math.min(percentDecrease, 99.9),
-          section.key === "DAY_0" ? 2 : 1,
+              : Math.min(percentDecrease, settings.laterDayPercentCap),
+          section.key === "DAY_0"
+            ? settings.day0DecimalPlaces
+            : settings.laterDayDecimalPlaces,
         ),
         innoculumLevel:
           section.key === "DAY_0"
-            ? getInoculumResultFromDecrease(row.organism, percentDecrease)
-            : getLogReductionFromDecrease(percentDecrease),
+            ? getInoculumResultFromControlGrowth(controlGrowth, settings)
+            : getLogReductionFromDecrease(percentDecrease, settings),
       };
     }),
   }));
@@ -300,6 +475,7 @@ function recalculateApeReportSections(
 
 function normalizeApeReportSections(
   value: any,
+  settings: ApeCalculationSettings,
   organismNames: string[] = DEFAULT_APE_ORGANISMS,
 ): ApeReportDaySection[] {
   const normalized = makeDefaultApeReportSections(organismNames).map(
@@ -321,6 +497,7 @@ function normalizeApeReportSections(
             controlGrowth: normalizeStoredNumeric(existingRow?.controlGrowth),
             sampleGrowth: normalizeStoredNumeric(existingRow?.sampleGrowth),
             decrease: String(existingRow?.decrease ?? ""),
+            // Calculated again below from % decrease for every section.
             innoculumLevel: String(existingRow?.innoculumLevel ?? ""),
           };
         }),
@@ -328,7 +505,7 @@ function normalizeApeReportSections(
     },
   );
 
-  return recalculateApeReportSections(normalized);
+  return recalculateApeReportSections(normalized, settings);
 }
 
 function formatDateForInput(value?: string | null) {
@@ -420,13 +597,25 @@ export default function ApeReportView(props: ApeReportViewProps) {
     [(report as any)?.organisms, detail?.organisms],
   );
 
+  const calculationSettings = useMemo(
+    () =>
+      normalizeApeCalculationSettings(
+        detail?.apeCalculationSettings ??
+          detail?.apeReportSections?.find(
+            (section: any) => section?.key === "DAY_0",
+          )?.calculationSettings,
+      ),
+    [detail?.apeCalculationSettings, detail?.apeReportSections],
+  );
+
   const apeReportSections = useMemo(
     () =>
       normalizeApeReportSections(
         detail?.apeReportSections,
+        calculationSettings,
         selectedApeOrganisms,
       ),
-    [detail?.apeReportSections, selectedApeOrganisms],
+    [detail?.apeReportSections, calculationSettings, selectedApeOrganisms],
   );
 
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
@@ -890,7 +1079,10 @@ export default function ApeReportView(props: ApeReportViewProps) {
                         value={
                           section.key !== "DAY_0"
                             ? ""
-                            : formatGrowthNotation(row.controlGrowth, 4)
+                            : formatGrowthNotation(
+                                row.controlGrowth,
+                                calculationSettings.controlGrowthMultiplier,
+                              )
                         }
                         readOnly
                         disabled
@@ -906,7 +1098,9 @@ export default function ApeReportView(props: ApeReportViewProps) {
                         className={tableInputClass}
                         value={formatGrowthNotation(
                           row.sampleGrowth,
-                          section.key === "DAY_0" ? 4 : 2,
+                          section.key === "DAY_0"
+                            ? calculationSettings.day0SampleGrowthMultiplier
+                            : calculationSettings.laterDaySampleGrowthMultiplier,
                         )}
                         readOnly
                         disabled
