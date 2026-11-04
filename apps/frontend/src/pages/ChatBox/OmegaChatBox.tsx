@@ -1077,7 +1077,7 @@ function ChatContent({
           <div className="flex min-h-0 flex-1 overflow-hidden">
             {/* LAB sidebar */}
             {isLab && (
-              <div className="w-[64px] shrink-0 border-r border-gray-200 overflow-y-auto bg-gray-50">
+              <div className="w-[69px] shrink-0 border-r border-gray-200 overflow-y-auto bg-gray-50">
                 {/* <div className="sticky top-0 border-b bg-gray-50 px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
                   Clients
                 </div> */}
@@ -1162,7 +1162,7 @@ function ChatContent({
                       value={messageSearch}
                       onChange={(e) => setMessageSearch(e.target.value)}
                       placeholder="Search messages..."
-                      className="w-full rounded-full border border-white/40 bg-white/70 px-4 py-2 text-sm shadow-sm backdrop-blur-md outline-none focus:ring-2 focus:ring-green-200"
+                      className="w-full rounded-full border border-green-400 bg-white/70 px-4 py-2 text-sm shadow-sm backdrop-blur-md outline-none focus:ring-2 focus:ring-green-800"
                     />
                     {messageSearch && (
                       <button
@@ -1737,7 +1737,7 @@ function ChatContent({
                       ? "Optional note… @ to choose recipients"
                       : "Type a message…"
                   }
-                  className="min-w-0 flex-1 min-h-[40px] max-h-[120px] resize-none overflow-y-auto rounded-2xl border px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-200 disabled:opacity-60"
+                  className="min-w-0 flex-1 min-h-[40px] max-h-[120px] resize-none overflow-y-auto rounded-2xl border border-green-400 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-800 disabled:opacity-60"
                   onKeyDown={(e) => {
                     if (e.nativeEvent.isComposing) return;
                     if (showMentions && e.key === "Escape") {
