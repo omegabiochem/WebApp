@@ -208,7 +208,9 @@ export class MessagesService {
     const labAudienceRoles = forwarding
       ? forwardAudience(user.role, selectedUsers, forwardRoles)
       : user.role === 'CLIENT'
-        ? clientEscalationRoles(selectedRoles)
+        ? selectedRoles.length
+          ? clientEscalationRoles(selectedRoles)
+          : [...LAB_ROLES]
         : labSenderAudience(user.role);
     const source = forwarding
       ? await this.prisma.message.findFirst({
@@ -410,7 +412,6 @@ export class MessagesService {
     const forwardIds = [
       ...new Set(
         thread.messages
-          .filter((m) => m.forwardedText == null)
           .map((m) => m.forwardedFromMessageId)
           .filter((id): id is string => Boolean(id)),
       ),
@@ -418,11 +419,11 @@ export class MessagesService {
     const forwardSources = forwardIds.length
       ? await this.prisma.message.findMany({
           where: { id: { in: forwardIds }, threadId: thread.id },
-          select: { id: true, body: true },
+          select: { id: true, body: true, senderName: true, senderRole: true },
         })
       : [];
     const forwardSourceById = new Map(
-      forwardSources.map((source) => [source.id, source.body]),
+      forwardSources.map((source) => [source.id, source]),
     );
     const parentIds = [
       ...new Set(
@@ -442,15 +443,20 @@ export class MessagesService {
       ...thread,
       messages: thread.messages.map((m) => {
         const parent = m.replyTo;
+        const forwardSource = m.forwardedFromMessageId
+          ? forwardSourceById.get(m.forwardedFromMessageId)
+          : undefined;
         return {
           ...m,
           isOwn: m.senderId === args.viewerUserId,
           ...(m.forwardedFromMessageId
-            ? forwardedParts(
-                m.body,
-                forwardSourceById.get(m.forwardedFromMessageId),
-                m,
-              )
+            ? {
+                ...forwardedParts(m.body, forwardSource?.body, m),
+                forwardedSenderName:
+                  forwardSource?.senderName?.trim() ||
+                  forwardSource?.senderRole ||
+                  null,
+              }
             : {}),
           taggedRecipients: m.mentionedUserIds.map((id) => {
             const person = recipientById.get(id);
