@@ -39,6 +39,7 @@ type MentionUser = {
 };
 
 type Message = {
+  forwardedSenderName?: string | null;
   forwardNote?: string | null;
   forwardedText?: string | null;
   taggedRecipients?: {
@@ -173,7 +174,7 @@ function ChatContent({
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const mentions = ["ADMIN", "SYSTEMADMIN", "QA"];
+  const mentions = [...LAB_ROLES];
 
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [forwardSource, setForwardSource] = useState<Message | null>(null);
@@ -734,6 +735,14 @@ function ChatContent({
   }, [filteredMessages]);
 
   function messageRecipients(target: Message) {
+    if (
+      target.senderRole === "CLIENT" &&
+      !target.isDirect &&
+      !target.forwardedFromMessageId &&
+      LAB_ROLES.every((role) => target.labAudienceRoles?.includes(role))
+    )
+      return "All lab users";
+
     if (target.taggedRecipients?.length) {
       const names = target.taggedRecipients.map(
         (person) =>
@@ -1375,8 +1384,16 @@ function ChatContent({
                           }
                         >
                           {m.forwardedFromMessageId && (
-                            <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-amber-800">
-                              <span aria-hidden="true">↪</span>Forwarded
+                            <div className="mb-1 flex min-w-0 items-start gap-1 text-[10px] font-semibold text-amber-800">
+                              <span className="shrink-0" aria-hidden="true">
+                                ↪
+                              </span>
+                              <span className="min-w-0 [overflow-wrap:anywhere]">
+                                Forwarded
+                                {m.forwardedSenderName
+                                  ? ` from ${m.forwardedSenderName}`
+                                  : ""}
+                              </span>
                             </div>
                           )}
                           {Array.isArray((m as any).attachments) &&
@@ -1484,6 +1501,10 @@ function ChatContent({
                     ×
                   </button>
                 </div>
+                <div className="mt-1 text-[10px] font-medium text-amber-800">
+                  From:{" "}
+                  {forwardSource.senderName?.trim() || forwardSource.senderRole}
+                </div>
                 <div className="mt-1 line-clamp-2 text-gray-600">
                   {wrapLongWords(forwardSource.body || "Attachment")}
                 </div>
@@ -1546,7 +1567,7 @@ function ChatContent({
                     ? "Choose people or lab roles with @"
                     : isLab
                       ? `All ${clientScope || "client"} users`
-                      : "ADMIN, SYSTEMADMIN, QA"}
+                      : "All lab users"}
                 </span>
               )}
             </div>
