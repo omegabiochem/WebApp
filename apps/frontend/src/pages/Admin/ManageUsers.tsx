@@ -293,6 +293,7 @@ export default function UsersAdmin() {
     register,
     handleSubmit,
     reset: resetCreateForm,
+    setError: setCreateError,
     formState: { isSubmitting: creating, errors: createErrors },
     watch,
   } = useForm<CreateFormData>({ resolver: zodResolver(createSchema) });
@@ -402,6 +403,29 @@ export default function UsersAdmin() {
 
   const onCreateSubmit = async (data: CreateFormData) => {
     try {
+      // A code assigned to any existing client cannot be used for a new account.
+      // Check all clients on the server, not just the paginated Users table.
+      if (data.role === "CLIENT") {
+        const candidate = String(data.clientCode ?? "").trim().toUpperCase();
+        const [existingClients, existingDetails] = await Promise.all([
+          api<Array<{ clientCode: string }>>("/admin/clients"),
+          api<Array<{ clientCode: string }>>("/client-details"),
+        ]);
+
+        const codeExists = [...existingClients, ...existingDetails].some(
+          (client) =>
+            String(client.clientCode ?? "").trim().toUpperCase() === candidate,
+        );
+
+        if (codeExists) {
+          setCreateError("clientCode", {
+            type: "manual",
+            message: "This Client Code already exists. Enter a unique Client Code.",
+          });
+          return;
+        }
+      }
+
       const res = await createUserByAdmin(data);
       setCreatedEmail(res.user.email);
       setCreatedUserId(res.user.userId ?? null);
